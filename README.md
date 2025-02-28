@@ -6,6 +6,21 @@ _Tool to manage incomes and outcomes following the accrual principle_
 
 So, we must apply the accrual principle to the invoicing, not payments. This means that if a student enrolls in a 16-week program and pays today, but the cohort starts in two months, the economic event (the invoice, not the payment) must start in two months and be distributed over the four months of the course, depending on the number of classes.
 
+### Premises
+- Past months must not be altered.
+- Holidays will not be taken into account in the class count.
+- Credits must be accrued in the corresponding month.
+- At the end of the accrual, the total invoiced minus credited must match all the money accrued.
+
+### Cases to consider
+- A person stops the service (drops out):
+  - Any amount remaining will be accrued that month.
+- A person postpones the service:
+  - The invoice must be accrued from the beginning of the service until the last moment the person was active.
+  - When the person resumes the service, the remaining amount (and, possibly, a re-enrollment fee) will be applied following the same basis in the new course period.
+- The start of a course is delayed
+  - As the service has not started, there are no consequences, but the timetable must be updated for the correct accrual. 
+ 
 ### Example
 - Student:
   - Enrollment: Mar 4th
@@ -25,21 +40,20 @@ As the months have a different number of classes depending on their weeks, assum
 |  July                |     9     |    28,125%   |     140,625      |
 |  August (until 27th) |     8     |    25,00%    |     125,00       |
 
-_If there are public holidays on any class day, that class will not occur. In consequence, the end date would change; it would be later._
 
 Workflows
 ========================
-General workflow
-------------------------
 ```mermaid
-
+---
+title: General workflow
+---
 %%{init: {"flowchart": {"htmlLabels": false}} }%%
 flowchart LR;
     external_invoices["Invoicing System"];
-    invoice_client_data["Get Client ID"];
-    search_client["Search client"];
-    accrued_portions["Set months and
-accrued portions"];
+    invoice_client_data(["Get Client ID"]);
+    search_client(["Search client"]);
+    accrued_portions(["Set months and
+accrued portions"]);
     invoices["Invoices"];
     accrued_invoices["Accrued invoices"];
     client["Annon client data"];
@@ -55,3 +69,4 @@ accrued portions"];
     client-->accrued_invoices;
     accrued_portions-->accrued_invoices;
 ```
+
