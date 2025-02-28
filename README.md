@@ -70,3 +70,31 @@ accrued portions"]);
     accrued_portions-->accrued_invoices;
 ```
 
+
+```mermaid
+---
+title: Processing accruable invoices (monthly)
+---
+%%{init: {"flowchart": {"htmlLabels": false}} }%%
+flowchart LR;
+    prepare_services(["Get service active in month"])
+    prepare_invoices(["Get invoices associated to service"])
+    prepare_clients(["Get clients associated to service"])
+    accrue_period(["Accrue period"])
+    
+    prepare_services-->classes["Number of classes in month"]
+    classes-->Data
+    prepare_invoices-->amount["Invoice amount"]
+    amount-->Data    
+    prepare_clients-->status["Client status"]
+    status-->Data
+
+    Data-->check_status{"Client status?"}
+    check_status--Active-->accrue_period
+    check_status--Postponed-->postponment_date["Postponment date"]
+    check_status--Dropped-->dropout_date["Dropped date"]
+    postponment_date-->accrue_until_date(["Accrue until date"])
+    accrue_until_date-->stop(["Stopped until a new period"])
+    dropout_date-->accrue_remaining(["Accrue the remaining amount entirely"])
+```
+
