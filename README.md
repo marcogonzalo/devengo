@@ -13,13 +13,15 @@ So, we must apply the accrual principle to the invoicing, not payments. This mea
 - At the end of the accrual, the total invoiced minus credited must match all the money accrued.
 
 ### Cases to consider
-- A person stops the service (drops out):
+- A person cancels the service:
   - Any amount remaining will be accrued that month.
-- A person postpones the service:
-  - The invoice must be accrued from the beginning of the service until the last moment the person was active.
+- The start of a service is delayed
+  - If someone has not started using the service, it shouldn't be processed until the service is re-assigned.
+  - As the service has not started, there are no consequences, but the timetable must be updated to reflect the correct accrual. 
+- A person temporarily pauses the service:
+  - The invoice must accrue from the beginning of the service until the last moment the person was active.
   - When the person resumes the service, the remaining amount (and, possibly, a re-enrollment fee) will be applied following the same basis in the new course period.
-- The start of a course is delayed
-  - As the service has not started, there are no consequences, but the timetable must be updated for the correct accrual. 
+  - Any additional charges must be accrued in the new service period.
  
 ### Example
 - Student:
@@ -46,20 +48,25 @@ Workflows
 ```mermaid
 ---
 title: General workflow
+config:
+  layout: elk
+  theme: neutral
 ---
 %%{init: {"flowchart": {"htmlLabels": false}} }%%
 flowchart LR;
-    external_invoices["Invoicing System"];
-    invoice_client_data(["Get Client ID"]);
-    search_client(["Search client"]);
+    external_invoices["Invoicing
+System"];
+    search_client(["Search client
+by ID"]);
     accrued_portions(["Set months and
 accrued portions"]);
     invoices["Invoices"];
-    accrued_invoices["Accrued invoices"];
-    client["Annon client data"];
+    accrued_invoices["Accrued
+invoices"];
+    client["Annon client
+data"];
 
-    external_invoices-->invoice_client_data;
-    invoice_client_data-->search_client;
+    external_invoices-->search_client;
     search_client-->CRM;
     CRM-->client;
     CRM-->Course;
@@ -74,15 +81,22 @@ accrued portions"]);
 ```mermaid
 ---
 title: Processing accruable invoices (monthly)
+config:
+  layout: elk
+  theme: neutral
 ---
 %%{init: {"flowchart": {"htmlLabels": false}} }%%
 flowchart LR;
-    prepare_services(["Get service active in month"])
-    prepare_invoices(["Get invoices associated to service"])
-    prepare_clients(["Get clients associated to service"])
+    prepare_services(["Get service
+active in month"])
+    prepare_invoices(["Get invoices
+associated to service"])
+    prepare_clients(["Get clients
+associated to service"])
     accrue_period(["Accrue period"])
     
-    prepare_services-->classes["Number of classes in month"]
+    prepare_services-->classes["Number of
+classes in month"]
     classes-->Data
     prepare_invoices-->amount["Invoice amount"]
     amount-->Data    
@@ -92,9 +106,16 @@ flowchart LR;
     Data-->check_status{"Client status?"}
     check_status--Active-->accrue_period
     check_status--Postponed-->postponment_date["Postponment date"]
+    postponment_date-->postponed_in_month{"Postponed
+in month?"}
+    postponed_in_month-->Yes_postponed["Yes"]-->accrue_until_date(["Accrue
+until date"])
+    accrue_until_date-->stop(["Stopped until
+a new period"])
+    postponed_in_month-->No
     check_status--Dropped-->dropout_date["Dropped date"]
-    postponment_date-->accrue_until_date(["Accrue until date"])
-    accrue_until_date-->stop(["Stopped until a new period"])
-    dropout_date-->accrue_remaining(["Accrue the remaining amount entirely"])
+    dropout_date-->dropped_in_month["Dropped
+in month?"]
+    dropped_in_month-->No-->ignore(["Ignore"])
+    dropped_in_month-->Yes_dropped["Yes"]-->accrue_remaining(["Accrue the remaining amount entirely"])
 ```
-
