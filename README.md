@@ -20,8 +20,10 @@ So, we must apply the accrual principle to the invoicing, not payments. This mea
   - As the service has not started, there are no consequences, but the timetable must be updated to reflect the correct accrual. 
 - A person temporarily pauses the service:
   - The invoice must accrue from the beginning of the service until the last moment the person was active.
-  - When the person resumes the service, the remaining amount (and, possibly, a re-enrollment fee) will be applied following the same basis in the new course period.
+  - When the person resumes the service, the remaining amount (and, possibly, a re-enrollment fee) will be applied on the same basis in the new course period.
   - Any additional charges must be accrued in the new service period.
+- A client ID from the invoice account doesn't match the CRM.
+  - Provide a view with all the mismatches to offer an alternative ID in CRM to locate the client.
  
 ### Example
 - Student:
@@ -68,7 +70,9 @@ data"];
 
     external_invoices-->search_client;
     search_client-->CRM;
-    CRM-->client;
+    CRM-->client_found{"Client found?"}
+    client_found-->No-->notify(["Notify"])
+    client_found-->Yes-->client;
     CRM-->Course;
     Course-->accrued_portions;
     external_invoices-->invoices;
@@ -87,21 +91,21 @@ config:
 ---
 %%{init: {"flowchart": {"htmlLabels": false}} }%%
 flowchart LR;
-    prepare_services(["Get service
-active in month"])
     prepare_invoices(["Get invoices
 associated to service"])
+    prepare_services(["Get service
+active in month"])
     prepare_clients(["Get clients
 associated to service"])
     accrue_period(["Accrue period"])
     
-    prepare_services-->classes["Number of
-classes in month"]
-    classes-->Data
     prepare_invoices-->amount["Invoice amount"]
     amount-->Data    
     prepare_clients-->status["Client status"]
     status-->Data
+    prepare_services-->classes["Number of
+classes in month"]
+    classes-->Data
 
     Data-->check_status{"Client status?"}
     check_status--Active-->accrue_period
