@@ -1,0 +1,42 @@
+###################################################
+# Stage: base
+# 
+# This base stage ensures all other stages are using the same base image
+# and provides common configuration for all stages.
+###################################################
+FROM node:22-alpine AS node-base
+WORKDIR /app
+
+###################################################
+# Stage: client-base
+#
+# This stage is used as the base for the client-dev and client-build stages.
+###################################################
+FROM node-base AS client-base
+COPY package*.json ./
+RUN --mount=type=cache,id=npm,target=/root/.npm \
+    npm install
+COPY ./*.config.*s ./tsconfig*.json ./
+
+###################################################
+# Stage: client-dev
+# 
+# Development stage with hot reload
+###################################################
+FROM client-base AS client-dev
+COPY ./src/client ./src/client
+COPY ./public ./public
+COPY ./index.html ./
+EXPOSE 5173
+CMD ["npm", "run", "dev"]
+
+###################################################
+# Stage: client-build
+# 
+# Production build stage
+###################################################
+FROM client-base AS client-build
+COPY ./src/client ./src/client
+COPY ./public ./public
+COPY ./index.html ./
+RUN npm run build
