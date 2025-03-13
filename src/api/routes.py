@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import JSONResponse
+from src.api.integrations.holded import HoldedClient, HoldedConfig
 
 api_router = APIRouter(tags=["api"])
 
@@ -10,3 +11,39 @@ def handle_hello(request: Request):
         "message": "Hello! I'm a message that came from the backend, check the network tab on the google inspector and you will see the GET request"
     }
     return JSONResponse(content=response_body)
+
+@api_router.route('/test-holded', methods=['GET'])
+async def test_holded_integration(request: Request):
+    """
+    Test endpoint to verify Holded API integration is working correctly.
+    It will attempt to fetch the first page of contacts and documents.
+    """
+    try:
+        # Initialize Holded client
+        config = HoldedConfig()
+        client = HoldedClient(config)
+        
+        # Test contacts endpoint
+        contacts_response = await client.list_contacts(page=1, per_page=1)
+        
+        # Test documents endpoint
+        documents_response = await client.list_documents(starttmp=1648771199, endtmp=1743465599)
+        
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Holded integration is working correctly",
+            "data": {
+                "contacts": {
+                    "total": len(contacts_response),
+                },
+                "documents": {
+                    "total": len(documents_response),
+                }
+            }
+        })
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Holded integration test failed: {str(e)}"
+        )
