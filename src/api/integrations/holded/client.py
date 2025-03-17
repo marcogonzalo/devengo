@@ -1,14 +1,8 @@
 import logging
-import os
-from fastapi import HTTPException
 import httpx
 from typing import Dict
-from pydantic import BaseModel
-
-
-class HoldedConfig(BaseModel):
-    api_key: str = os.getenv("HOLDED_API_KEY")
-    base_url: str = "https://api.holded.com/api/invoicing/v1"
+from fastapi import HTTPException
+from api.integrations.holded.config import HoldedConfig
 
 
 class HoldedClient:
@@ -77,8 +71,8 @@ class HoldedClient:
             raise HTTPException(
                 status_code=500, detail=f"Error occurred in HoldedClient get_contact: {e}")
 
-    async def list_documents(self, document_type: str = "invoice", page: int = 1, per_page: int = 50, 
-                             starttmp: int = None, endtmp: int = None, contactid: str = None, 
+    async def list_documents(self, document_type: str = "invoice", page: int = 1, per_page: int = 50,
+                             starttmp: int = None, endtmp: int = None, contactid: str = None,
                              paid: int = None, billed: int = None, sort: str = None) -> Dict:
         """
         List all documents from Holded. 
@@ -102,8 +96,8 @@ class HoldedClient:
 
         # Validate document_type
         valid_document_types = [
-            "invoice", "salesreceipt", "creditnote", "salesorder", 
-            "proform", "waybill", "estimate", "purchase", 
+            "invoice", "salesreceipt", "creditnote", "salesorder",
+            "proform", "waybill", "estimate", "purchase",
             "purchaseorder", "purchaserefund"
         ]
         if document_type not in valid_document_types:
@@ -167,7 +161,7 @@ class HoldedClient:
             "billed": billed,
             "sort": sort
         }
-        
+
         # Remove any parameters that are None
         params = {k: v for k, v in params.items() if v is not None}
 
@@ -190,8 +184,7 @@ class HoldedClient:
                 f"Error occurred in HoldedClient list_documents: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error occurred in HoldedClient list_documents: {e}")
-        
-    
+
     async def get_document(self, document_id: str) -> Dict:
         """
         Get a specific document by ID.
