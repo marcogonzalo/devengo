@@ -13,7 +13,7 @@ ENV PATH="$VENV_PATH/bin:$PATH"
 
 # Base stage for dev and prod
 FROM python-base AS base
-RUN apt-get update && apt-get install -y \
+RUN apt update && apt-get install -y \
     curl \
     gcc \
     libpq-dev \

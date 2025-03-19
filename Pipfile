@@ -4,9 +4,12 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-fastapi = {extras = ["standard"], version = "*"}
+fastapi = {extras = ["standard"] }
+sqlmodel = "*"
 alembic = "*"
 httpx = "*"
+cryptography = "*"
+psycopg2-binary = "*"
 
 [dev-packages]
 
