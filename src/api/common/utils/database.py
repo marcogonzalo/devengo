@@ -15,7 +15,6 @@ def _get_database_url_from_env_vars():
 
 def get_database_url():
     url = os.getenv("DATABASE_URL", _get_database_url_from_env_vars())
-    print("DATABASE_URL", url)
     return url
 
 

@@ -13,7 +13,7 @@ class InvoiceService:
         """Create a new invoice"""
         invoice = Invoice(
             external_id=invoice_data.external_id,
-            # client_id=invoice_data.client_id,
+            client_id=invoice_data.client_id,
             invoice_number=invoice_data.invoice_number,
             invoice_date=invoice_data.invoice_date,
             due_date=invoice_data.due_date,

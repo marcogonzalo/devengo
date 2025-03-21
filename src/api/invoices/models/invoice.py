@@ -2,6 +2,7 @@ from typing import Optional, List, Dict, Any
 from datetime import date
 from sqlmodel import Field, Relationship, Column, JSON
 from src.api.common.models.base import BaseModel, TimestampMixin
+from src.api.clients.models import Client
 
 
 class Invoice(BaseModel, TimestampMixin, table=True):
@@ -14,8 +15,8 @@ class Invoice(BaseModel, TimestampMixin, table=True):
     external_id: str = Field(index=True, unique=True)
 
     # Client relationship
-    # client_id: Optional[int] = Field(default=None, foreign_key="client.id")
-    # client: Optional[Client] = Relationship()
+    client_id: Optional[int] = Field(default=None, foreign_key="client.id")
+    client: Optional[Client] = Relationship()
 
     # Invoice details
     invoice_number: str
@@ -54,7 +55,7 @@ class InvoiceAccrual(BaseModel, TimestampMixin, table=True):
     percentage: float  # The percentage of the total invoice this accrual represents
 
     # Status
-    status: int = "pending"  # e.g., "pending", "processed", "cancelled"
+    status: str = "pending"  # e.g., "pending", "processed", "cancelled"
 
     class Config:
         from_attributes = True

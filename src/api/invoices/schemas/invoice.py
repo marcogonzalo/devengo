@@ -19,7 +19,7 @@ class InvoiceBase(BaseModel):
 class InvoiceCreate(InvoiceBase):
     """Schema for creating a new invoice"""
     external_id: str
-    # client_id: Optional[int] = None
+    client_id: Optional[int] = None
     original_data: Dict[str, Any] = {}
 
 
@@ -27,7 +27,7 @@ class InvoiceRead(InvoiceBase):
     """Schema for reading invoice data"""
     id: int
     external_id: str
-    # client_id: Optional[int] = None
+    client_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
 
@@ -40,7 +40,7 @@ class InvoiceUpdate(BaseModel):
     total_amount: Optional[float] = None
     currency: Optional[str] = None
     status: Optional[str] = None
-    # client_id: Optional[int] = None
+    client_id: Optional[int] = None
 
 
 class InvoiceAccrualBase(BaseModel):

@@ -1,4 +1,5 @@
 import src.api.invoices.models
+import src.api.clients.models
 import importlib
 from logging.config import fileConfig
 import pkgutil
