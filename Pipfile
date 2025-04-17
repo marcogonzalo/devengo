@@ -12,6 +12,7 @@ cryptography = "*"
 psycopg2-binary = "*"
 
 [dev-packages]
+debugpy = "*"
 
 [requires]
 python_version = "3.13"

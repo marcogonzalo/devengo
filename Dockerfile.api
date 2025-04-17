@@ -32,7 +32,9 @@ COPY Pipfile Pipfile.lock ./
 # Development stage
 FROM base AS api-dev
 RUN pipenv install --dev --system --deploy
-
+# Install debugpy and expose the port
+RUN pipenv install debugpy
+EXPOSE 5678
 # Copy the rest of the application
 COPY ./src ./src
 

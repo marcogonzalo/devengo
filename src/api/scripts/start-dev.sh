@@ -14,4 +14,4 @@ alembic upgrade head
 
 # Start the application
 echo "Starting application..."
-uvicorn main:app --reload --host 0.0.0.0 --port 3001
+python -m debugpy --listen 0.0.0.0:5678 -m uvicorn main:app --reload --host 0.0.0.0 --port 3001

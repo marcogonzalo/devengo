@@ -2,6 +2,14 @@
 !.env.example
 .venv
 
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+
 # Logs
 logs
 *.log
