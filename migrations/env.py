@@ -24,7 +24,7 @@ def import_models():
 
 
 # Import all models before creating metadata
-# import_models()
+import_models()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

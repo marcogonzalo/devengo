@@ -50,7 +50,7 @@ class InvoiceService:
         if not invoice:
             return None
 
-        invoice_data_dict = invoice_data.dict(exclude_unset=True)
+        invoice_data_dict = invoice_data.model_dump(exclude_unset=True)
         for key, value in invoice_data_dict.items():
             setattr(invoice, key, value)
 

@@ -29,6 +29,12 @@ class Invoice(BaseModel, TimestampMixin, table=True):
     # Store original invoice data as JSON
     original_data: Dict[str, Any] = Field(default={}, sa_column=Column(JSON))
 
+    # Service contract relationship
+    service_contract_id: Optional[int] = Field(
+        default=None, foreign_key="servicecontract.id")
+    service_contract: Optional["ServiceContract"] = Relationship(
+        back_populates="invoices")
+
     # Relationships
     accruals: List["InvoiceAccrual"] = Relationship(back_populates="invoice")
 

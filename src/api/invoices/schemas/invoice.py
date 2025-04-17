@@ -41,7 +41,7 @@ class InvoiceUpdate(BaseModel):
     currency: Optional[str] = None
     status: Optional[str] = None
     client_id: Optional[int] = None
-
+    service_contract_id: Optional[int] = None
 
 class InvoiceAccrualBase(BaseModel):
     """Base schema for invoice accrual data"""

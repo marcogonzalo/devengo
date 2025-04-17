@@ -1,4 +1,5 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
+from typing import Optional
 
 
 def get_current_datetime() -> datetime:
@@ -11,3 +12,7 @@ def get_current_datetime() -> datetime:
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt
+
+
+def get_date(date_str: str | None) -> Optional[date]:
+    return None if date_str is None else date.fromisoformat(date_str[:10])

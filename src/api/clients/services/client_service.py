@@ -36,6 +36,22 @@ class ClientService:
         """Get a list of clients"""
         return self.db.exec(select(Client).offset(skip).limit(limit)).all()
 
+    def get_clients_with_no_external_id(self, system: str) -> List[Client]:
+        """Get a list of clients that don't have an external ID for a specific system"""
+        # Get all clients
+        all_clients = self.db.exec(select(Client)).all()
+
+        # Get all clients that have an external ID for the specified system
+        clients_with_external_id = set()
+        external_ids = self.db.exec(select(ClientExternalId).where(
+            ClientExternalId.system == system)).all()
+
+        for ext_id in external_ids:
+            clients_with_external_id.add(ext_id.client_id)
+
+        # Filter clients that don't have the external ID
+        return [client for client in all_clients if client.id not in clients_with_external_id]
+
     def update_client(self, client_id: int, client_data: ClientUpdate) -> Optional[Client]:
         """Update a client"""
         client = self.db.get(Client, client_id)
@@ -92,3 +108,10 @@ class ClientService:
                 return ext_id.client
 
         return None
+    
+    def get_client_external_id(self, client_id: int, system: str) -> Optional[ClientExternalId]:
+        """Get a client external ID"""
+        return self.db.exec(select(ClientExternalId).where(
+            ClientExternalId.client_id == client_id,
+            ClientExternalId.system == system
+        )).first()

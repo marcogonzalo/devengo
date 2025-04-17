@@ -212,3 +212,54 @@ class HoldedClient:
             logging.error(f"Error occurred in HoldedClient get_document: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error occurred in HoldedClient get_document: {e}")
+
+    async def list_income_accounts(self) -> Dict:
+        """
+        List all expenses accounts from Holded.
+
+        Returns:
+            Dict containing the expenses accounts data
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.config.base_url}/saleschannels",
+                    headers=self.headers
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            logging.error(
+                f"HTTP error occurred in HoldedClient list_income_accounts: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"HTTP error occurred in HoldedClient list_income_accounts: {e}")
+        except Exception as e:
+            logging.error(
+                f"Error occurred in HoldedClient list_income_accounts: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error occurred in HoldedClient list_income_accounts: {e}")
+
+    async def list_expenses_accounts(self) -> Dict:
+        """
+        List all expenses accounts from Holded.
+
+        Returns:
+            Dict containing the expenses accounts data
+        """
+        try:
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    f"{self.config.base_url}/expensesaccounts",
+                    headers=self.headers
+                )
+                response.raise_for_status()
+                return response.json()
+        except httpx.HTTPStatusError as e:
+            logging.error(
+                f"HTTP error occurred in HoldedClient list_expenses_accounts: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"HTTP error occurred in HoldedClient list_expenses_accounts: {e}")
+        except Exception as e:
+            logging.error(f"Error occurred in HoldedClient list_expenses_accounts: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error occurred in HoldedClient list_expenses_accounts: {e}")
