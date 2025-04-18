@@ -1,11 +1,11 @@
 from enum import Enum
 
 class ServiceStatus(str, Enum):
-    ACTIVE = "active"
-    POSTPONED = "postponed"
-    DROPPED = "dropped"
-    ENDED = "ended"
+    ACTIVE = "ACTIVE"
+    POSTPONED = "POSTPONED"
+    DROPPED = "DROPPED"
+    ENDED = "ENDED"
 
 class ServiceContractStatus(str, Enum):
-    ACTIVE = "active"
-    CANCELED = "canceled"
+    ACTIVE = "ACTIVE"
+    CANCELED = "CANCELED"

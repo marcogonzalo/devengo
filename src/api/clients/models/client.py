@@ -1,7 +1,6 @@
 from typing import Optional, List
-from datetime import datetime, timezone
-from sqlmodel import Field, SQLModel, Relationship
-from pydantic import validator
+from fastapi.logger import logger
+from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
 from src.api.common.utils.encryption import encrypt_data, decrypt_data
 
@@ -32,6 +31,25 @@ class Client(BaseModel, TimestampMixin, table=True):
     def identifier(self, value: str):
         """Set encrypted identifier"""
         self.encrypted_identifier = encrypt_data(value)
+
+    def get_external_id(self, system: str) -> Optional[str]:
+        """
+        Get external ID for a specific system
+        
+        Args:
+            system: The system identifier (e.g., 'fourgeeks', 'holded')
+            
+        Returns:
+            Optional[str]: The decrypted external ID if found, None otherwise
+        """
+        try:
+            return next(
+                (ext_id.external_id for ext_id in self.external_ids if ext_id.system == system),
+                None
+            )
+        except Exception as e:
+            logger.error(f"Error getting external ID for system {system}: {str(e)}")
+            return None
 
     class Config:
         from_attributes = True
