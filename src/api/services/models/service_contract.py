@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import List
 from datetime import date
 from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
@@ -25,12 +25,13 @@ class ServiceContract(BaseModel, TimestampMixin, table=True):
     contract_amount: float
     contract_currency: str = "EUR"
     accrued_amount: float = 0
-    status: ServiceContractStatus = ServiceContractStatus.ACTIVE
+    status: ServiceContractStatus = Field(
+        default=ServiceContractStatus.ACTIVE,
+        index=True
+    )
 
-    # Invoices relationship
+    # Relationships
     invoices: List["Invoice"] = Relationship(back_populates="service_contract")
-
-    # Periods relationship
     periods: List["ServicePeriod"] = Relationship(back_populates="contract")
 
     class Config:

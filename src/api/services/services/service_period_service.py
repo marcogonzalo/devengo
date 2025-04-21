@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from datetime import date
 from src.api.services.models.service_period import ServicePeriod
 from src.api.services.schemas.service_period import ServicePeriodCreate, ServicePeriodUpdate
-from api.common.constants.services import ServiceStatus
+from api.common.constants.services import ServicePeriodStatus
 
 
 class ServicePeriodService:
@@ -41,7 +41,7 @@ class ServicePeriodService:
             select(ServicePeriod).where(
                 (ServicePeriod.start_date <= target_date) & 
                 (ServicePeriod.end_date >= target_date) &
-                (ServicePeriod.status == ServiceStatus.ACTIVE)
+                (ServicePeriod.status == ServicePeriodStatus.ACTIVE)
             )
         ).all()
 
@@ -60,7 +60,7 @@ class ServicePeriodService:
         self.db.refresh(period)
         return period
 
-    def update_period_status(self, period_id: int, status: ServiceStatus) -> Optional[ServicePeriod]:
+    def update_period_status(self, period_id: int, status: ServicePeriodStatus) -> Optional[ServicePeriod]:
         """Update the status of a service period"""
         period = self.db.get(ServicePeriod, period_id)
         if not period:

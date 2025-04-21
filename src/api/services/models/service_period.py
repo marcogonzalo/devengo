@@ -2,7 +2,7 @@ from typing import Optional
 from datetime import date
 from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
-from api.common.constants.services import ServiceStatus
+from api.common.constants.services import ServicePeriodStatus
 
 
 class ServicePeriod(BaseModel, TimestampMixin, table=True):
@@ -22,12 +22,11 @@ class ServicePeriod(BaseModel, TimestampMixin, table=True):
     name: Optional[str] = Field(default=None)
     start_date: date = Field(index=True)
     end_date: date = Field(index=True)
-    # Using ServiceStatus (active, postponed, dropped, ended)
-    status: ServiceStatus = Field(default=ServiceStatus.ACTIVE, index=True)
+    status: ServicePeriodStatus = Field(
+        default=ServicePeriodStatus.ACTIVE,
+        index=True
+    )
 
     class Config:
         from_attributes = True
         arbitrary_types_allowed = True
-        
-# Import at the end to avoid circular imports
-from src.api.services.models.service_contract import ServiceContract  # noqa 

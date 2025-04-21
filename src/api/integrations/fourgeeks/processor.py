@@ -4,22 +4,22 @@ from fastapi.logger import logger
 from src.api.clients.schemas.client import ClientExternalIdCreate
 from src.api.integrations.fourgeeks.client import FourGeeksClient
 from src.api.integrations.fourgeeks.log_error import log_enrollment_error
-from api.common.constants.services import ServiceStatus
+from api.common.constants.services import ServicePeriodStatus
 from src.api.clients.services.client_service import ClientService
 from src.api.services.services.service_period_service import ServicePeriodService
 from src.api.services.schemas.service_period import ServicePeriodCreate
 from src.api.common.utils.datetime import get_date
 
 
-def map_educational_status(status: str) -> ServiceStatus:
+def map_educational_status(status: str) -> ServicePeriodStatus:
     status_mapping = {
-        "ACTIVE": ServiceStatus.ACTIVE,
-        "DROPPED": ServiceStatus.DROPPED,
-        "GRADUATED": ServiceStatus.ENDED,
-        "NOT_COMPLETING": ServiceStatus.ENDED,
-        "POSTPONED": ServiceStatus.POSTPONED,
+        "ACTIVE": ServicePeriodStatus.ACTIVE,
+        "DROPPED": ServicePeriodStatus.DROPPED,
+        "GRADUATED": ServicePeriodStatus.ENDED,
+        "NOT_COMPLETING": ServicePeriodStatus.ENDED,
+        "POSTPONED": ServicePeriodStatus.POSTPONED,
     }
-    return status_mapping.get(status, ServiceStatus.ACTIVE)
+    return status_mapping.get(status, ServicePeriodStatus.ACTIVE)
 
 
 def _adjust_start_date_to_service(start_date_str: str | None, cohort_slug: str) -> Optional[date]:
@@ -55,7 +55,7 @@ class EnrollmentProcessor:
             start_date = cohort.get("kickoff_date")
             end_date = cohort.get("ending_date")
             educational_status = enrollment.get(
-                "educational_status", ServiceStatus.ACTIVE)
+                "educational_status", ServicePeriodStatus.ACTIVE)
 
             if not end_date:
                 self.stats["skipped"] += 1
@@ -93,7 +93,7 @@ class EnrollmentProcessor:
         cohort_slug: str,
         start_date: str,
         end_date: str,
-        status: ServiceStatus
+        status: ServicePeriodStatus
     ):
         existing_period = self.period_service.get_period_by_external_id(
             contract_id, cohort_slug

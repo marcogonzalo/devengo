@@ -1,7 +1,7 @@
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime, date
-from api.common.constants.services import ServiceStatus
+from api.common.constants.services import ServicePeriodStatus
 
 
 class ServicePeriodBase(BaseModel):
@@ -10,7 +10,7 @@ class ServicePeriodBase(BaseModel):
     external_id: Optional[str] = None
     start_date: date
     end_date: date
-    status: ServiceStatus = ServiceStatus.ACTIVE
+    status: ServicePeriodStatus = ServicePeriodStatus.ACTIVE
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
@@ -33,6 +33,6 @@ class ServicePeriodUpdate(BaseModel):
     name: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    status: Optional[ServiceStatus] = None
+    status: Optional[ServicePeriodStatus] = None
     
     model_config = ConfigDict(arbitrary_types_allowed=True) 
