@@ -2,7 +2,7 @@ from typing import Optional, List
 from datetime import date
 from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
-from src.api.services.constants import ServiceContractStatus
+from api.common.constants.services import ServiceContractStatus
 from src.api.clients.models.client import Client
 
 

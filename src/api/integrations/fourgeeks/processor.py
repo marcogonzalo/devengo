@@ -4,7 +4,7 @@ from fastapi.logger import logger
 from src.api.clients.schemas.client import ClientExternalIdCreate
 from src.api.integrations.fourgeeks.client import FourGeeksClient
 from src.api.integrations.fourgeeks.log_error import log_enrollment_error
-from src.api.services.constants import ServiceStatus
+from api.common.constants.services import ServiceStatus
 from src.api.clients.services.client_service import ClientService
 from src.api.services.services.service_period_service import ServicePeriodService
 from src.api.services.schemas.service_period import ServicePeriodCreate

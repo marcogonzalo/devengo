@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel, ConfigDict
-from src.api.services.constants import ServiceContractStatus
+from api.common.constants.services import ServiceContractStatus
 
 
 class ServiceContractBase(BaseModel):

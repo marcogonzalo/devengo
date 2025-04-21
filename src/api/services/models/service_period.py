@@ -2,7 +2,7 @@ from typing import Optional
 from datetime import date
 from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
-from src.api.services.constants import ServiceStatus
+from api.common.constants.services import ServiceStatus
 
 
 class ServicePeriod(BaseModel, TimestampMixin, table=True):
@@ -20,10 +20,10 @@ class ServicePeriod(BaseModel, TimestampMixin, table=True):
 
     # Period details
     name: Optional[str] = Field(default=None)
-    start_date: date
-    end_date: date
+    start_date: date = Field(index=True)
+    end_date: date = Field(index=True)
     # Using ServiceStatus (active, postponed, dropped, ended)
-    status: ServiceStatus = ServiceStatus.ACTIVE
+    status: ServiceStatus = Field(default=ServiceStatus.ACTIVE, index=True)
 
     class Config:
         from_attributes = True

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import List, Optional
 from sqlmodel import Session, select
-from src.api.services.constants import ServiceContractStatus
+from api.common.constants.services import ServiceContractStatus
 from src.api.services.models.service_contract import ServiceContract
 from src.api.services.schemas.service_contract import ServiceContractCreate, ServiceContractUpdate
 
