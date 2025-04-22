@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.logger import logger
+from fastapi.responses import JSONResponse
 from sqlmodel import Session
 from src.api.integrations.fourgeeks.log_error import log_contract_error, log_student_error
 from src.api.services.services.service_period_service import ServicePeriodService
@@ -38,6 +39,38 @@ def get_fourgeeks_client():
     client = FourGeeksClient(credentials)
     client.login()  # Authenticates with 4Geeks API
     return client
+
+
+@router.route('/test', methods=['GET'])
+def test_fourgeeks_integration(request: Request):
+    """
+    Test endpoint to verify 4Geeks API integration is working correctly.
+    It will attempt to authenticate and get a token.
+    """
+    try:
+        # Initialize 4Geeks client
+        config = FourGeeksConfig()
+        client = FourGeeksClient(FourGeeksCredentials(
+            username=config.username,
+            password=config.password
+        ))
+
+        # Test authentication
+        client.login()
+
+        return JSONResponse(content={
+            "status": "success",
+            "message": "4Geeks integration is working correctly",
+            "data": {
+                "authenticated": True
+            }
+        })
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"4Geeks integration test failed: {str(e)}"
+        )
 
 
 # @router.get("/sync-cohorts")

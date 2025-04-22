@@ -1,8 +1,9 @@
 from datetime import datetime
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.logger import logger
+from fastapi.responses import JSONResponse
 from sqlmodel import Session
 from src.api.services.services.service_contract import ServiceContractService
 from src.api.common.utils.database import get_db
@@ -115,6 +116,45 @@ def _get_service_from_products(products, service_service: ServiceService) -> Ser
         logger.error(
             f"Error getting service from products: {e}")
     return service
+
+
+@router.route('/test-holded', methods=['GET'])
+async def test_holded_integration(request: Request):
+    """
+    Test endpoint to verify Holded API integration is working correctly.
+    It will attempt to fetch the first page of contacts and documents.
+    """
+    try:
+        # Initialize Holded client
+        config = HoldedConfig()
+        client = HoldedClient(config)
+
+        # Test contacts endpoint
+        contacts_response = await client.list_contacts(page=1, per_page=1)
+
+        # Test documents endpoint
+        documents_response = await client.list_documents(starttmp=1648771199, endtmp=1743465599)
+
+        return JSONResponse(content={
+            "status": "success",
+            "message": "Holded integration is working correctly",
+            "data": {
+                "contacts": {
+                    "total": len(contacts_response),
+                },
+                "documents": {
+                    "total": len(documents_response),
+                }
+            }
+        })
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Holded integration test failed: {str(e)}"
+        )
+
+
 
 
 @router.get("/sync-contacts")
