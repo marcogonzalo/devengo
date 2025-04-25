@@ -2,15 +2,20 @@ from enum import Enum
 from sqlalchemy.dialects.postgresql import ENUM
 
 # Python enums for type hints and constants
+
+
 class ServicePeriodStatus(str, Enum):
     ACTIVE = "ACTIVE"
     POSTPONED = "POSTPONED"
     DROPPED = "DROPPED"
     ENDED = "ENDED"
 
+
 class ServiceContractStatus(str, Enum):
     ACTIVE = "ACTIVE"
     CANCELED = "CANCELED"
+    CLOSED = "CLOSED"
+
 
 # SQLAlchemy enum types for database
 service_period_status_enum = ENUM(

@@ -20,10 +20,9 @@ class Service(BaseModel, TimestampMixin, table=True):
     # Class schedule information
     total_sessions: int = 60
     sessions_per_week: int = 3
-    
+
     # Relationships
-    contracts: List["ServiceContract"] = Relationship(
-        back_populates="service")
+    contracts: List["ServiceContract"] = Relationship(back_populates="service")
 
     class Config:
         from_attributes = True

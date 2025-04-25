@@ -3,7 +3,10 @@ from datetime import date
 from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
 from api.common.constants.services import ServiceContractStatus
+from src.api.services.models.service_period import ServicePeriod
+from src.api.invoices.models.invoice import Invoice
 from src.api.clients.models.client import Client
+from src.api.accruals.models.accrued_period import AccruedPeriod
 
 
 class ServiceContract(BaseModel, TimestampMixin, table=True):
@@ -31,8 +34,9 @@ class ServiceContract(BaseModel, TimestampMixin, table=True):
     )
 
     # Relationships
-    invoices: List["Invoice"] = Relationship(back_populates="service_contract")
-    periods: List["ServicePeriod"] = Relationship(back_populates="contract")
+    invoices: List[Invoice] = Relationship(back_populates="service_contract")
+    periods: List[ServicePeriod] = Relationship(back_populates="contract")
+    accruals: List[AccruedPeriod] = Relationship(back_populates="contract")
 
     class Config:
         from_attributes = True
