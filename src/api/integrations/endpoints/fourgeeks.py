@@ -11,7 +11,7 @@ from src.api.clients.services.client_service import ClientService
 from src.api.services.services.service_service import ServiceService
 from src.api.integrations.fourgeeks.processor import EnrollmentProcessor, StudentProcessor
 
-router = APIRouter(prefix="/integrations/4geeks", tags=["integrations"])
+router = APIRouter(prefix="/integrations/fourgeeks", tags=["integrations"])
 
 
 def get_client_service(db: Session = Depends(get_db)):
