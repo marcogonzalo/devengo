@@ -1,7 +1,9 @@
+from src.api.services.models.service import Service  #  noqa
 from datetime import date
 from typing import List, Optional
 from sqlmodel import Session, select
 from api.common.constants.services import ServiceContractStatus
+from api.invoices.schemas.invoice import InvoiceBase
 from src.api.services.models.service_contract import ServiceContract
 from src.api.services.schemas.service_contract import ServiceContractCreate, ServiceContractUpdate
 
@@ -11,18 +13,18 @@ class ServiceContractService:
         self.db = db
 
     def create_contract(self, contract_data: ServiceContractCreate) -> ServiceContract:
-            """Create a new service contract"""
-            contract = ServiceContract(
-                service_id=contract_data.service_id,
-                client_id=contract_data.client_id,
-                contract_date=contract_data.contract_date,
-                status=contract_data.status
-            )
+        """Create a new service contract"""
+        contract = ServiceContract(
+            service_id=contract_data.service_id,
+            client_id=contract_data.client_id,
+            contract_date=contract_data.contract_date,
+            status=contract_data.status
+        )
 
-            self.db.add(contract)
-            self.db.commit()
-            self.db.refresh(contract)
-            return contract
+        self.db.add(contract)
+        self.db.commit()
+        self.db.refresh(contract)
+        return contract
 
     def get_contract(self, contract_id: int) -> Optional[ServiceContract]:
         """Get an contract by ID"""
@@ -35,6 +37,24 @@ class ServiceContractService:
     def get_contracts_by_client(self, client_id: int) -> List[ServiceContract]:
         """Get all contracts for a client"""
         return self.db.exec(select(ServiceContract).where(ServiceContract.client_id == client_id)).all()
+
+    def update_contract_amount(self, contract_id: int, aggregated_amount: float = 0.0) -> Optional[ServiceContract]:
+        """Update an contract amount"""
+
+        if not aggregated_amount or aggregated_amount == 0:
+            return None
+
+        contract = self.db.get(ServiceContract, contract_id)
+        if not contract:
+            return None
+
+        # Update status and corresponding date if contract_amount is changing
+        contract.contract_amount += aggregated_amount
+
+        self.db.add(contract)
+        self.db.commit()
+        self.db.refresh(contract)
+        return contract
 
     def update_contract_status(self, contract_id: int, contract_data: ServiceContractUpdate) -> Optional[ServiceContract]:
         """Update an contract status"""
@@ -83,13 +103,14 @@ class ServiceContractService:
             (ServiceContract.service_id == service_id)
         )).first()
 
-    def create_service_contract(self, client_id: int, service_id: int) -> ServiceContract:
+    def create_service_contract(self, client_id: int, service_id: int, first_invoice: InvoiceBase) -> ServiceContract:
         """Create a new service contract for a given client and service"""
         contract_data = ServiceContract(
             client_id=client_id,
             service_id=service_id,
-            contract_date=date.today(),  # Assuming contract starts today
-            contract_amount=0.0,  # Default amount, adjust as needed
+            # Assuming contract starts with first invoice
+            contract_date=first_invoice.invoice_date,
+            contract_amount=first_invoice.total_amount,
             contract_currency="EUR",  # Default currency
             accrued_amount=0.0,  # Default accrued amount
             status=ServiceContractStatus.ACTIVE  # Default status
@@ -98,6 +119,3 @@ class ServiceContractService:
         self.db.commit()
         self.db.refresh(contract_data)
         return contract_data
-    
-
-from src.api.services.models.service import Service # noqa

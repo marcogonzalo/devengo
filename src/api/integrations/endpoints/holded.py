@@ -70,15 +70,6 @@ async def _get_or_create_client(contact_id, client_service, holded_client):
     return client
 
 
-def _get_or_create_service_contract(client_id, service_id, service_contract_service):
-    service_contract = service_contract_service.get_service_contract_by_client_and_service(
-        client_id, service_id)
-    if not service_contract:
-        service_contract = service_contract_service.create_service_contract(
-            client_id, service_id)
-    return service_contract
-
-
 def _create_invoice(document, client, invoice_service):
     # Convert to datetime as needed
     invoice_date = datetime.fromtimestamp(
@@ -155,8 +146,6 @@ async def test_holded_integration(request: Request):
         )
 
 
-
-
 @router.get("/sync-contacts")
 async def sync_contacts(
     client_service: ClientService = Depends(get_client_service),
@@ -211,8 +200,8 @@ async def sync_contacts(
         )
 
 
-@router.get("/sync-contracts")
-async def sync_contracts(
+@router.get("/sync-invoices-and-clients")
+async def sync_invoices_and_clients(
     client_service: ClientService = Depends(get_client_service),
     invoice_service: InvoiceService = Depends(get_invoice_service),
     holded_client: HoldedClient = Depends(get_holded_client),
@@ -222,7 +211,7 @@ async def sync_contracts(
     start_timestamp: Optional[int] = None,
     end_timestamp: Optional[int] = None
 ):
-    """Sync invoices with their respective clientsfrom Holded to the local database"""
+    """Sync invoices with their respective clients from Holded to the local database"""
     try:
         documents = await holded_client.list_documents(starttmp=start_timestamp, endtmp=end_timestamp)
 
@@ -236,7 +225,6 @@ async def sync_contracts(
                 document_id = document.get("id")
                 logger.info(f"Processing document: {document_id}")
 
-
                 # Get client by Holded contact ID
                 try:
                     contact_id = document.get("contact")
@@ -246,14 +234,16 @@ async def sync_contracts(
                         f"Error getting client for document_id {document_id}: {e}")
                     client_service.db.rollback()
                     raise e
-                
+
                 # Check if invoice already exists
                 invoice = invoice_service.get_invoice_by_external_id(
                     document_id)
-
+                new_amount = 0
                 if not invoice:
                     try:
-                        invoice = _create_invoice(document, client, invoice_service)
+                        invoice = _create_invoice(
+                            document, client, invoice_service)
+                        new_amount = invoice.total_amount
                     except Exception as e:
                         logger.error(
                             f"Error creating invoice for document_id {document_id}: {e}")
@@ -269,16 +259,22 @@ async def sync_contracts(
                     skipped_count += 1
                     continue
 
-
                 # Create service contract if it doesn't exist
-                try:
-                    service_contract = _get_or_create_service_contract(
-                        client.id, service.id, service_contract_service)
-                except Exception as e:
-                    logger.error(
-                        f"Error creating service contract for document_id {document_id}: {e}")
-                    raise e
-                
+                service_contract = service_contract_service.get_service_contract_by_client_and_service(
+                    client.id, service.id)
+                if not service_contract:
+                    try:
+                        service_contract = service_contract_service.create_service_contract(
+                            client.id, service.id, first_invoice=invoice)
+                    except Exception as e:
+                        logger.error(
+                            f"Error creating service contract for document_id {document_id}: {e}")
+                        raise e
+                else:
+                    if new_amount != 0:
+                        service_contract_service.update_contract_amount(
+                            service_contract.id, new_amount)
+
                 # Update invoice with service contract id
                 invoice_service.update_invoice(invoice.id, InvoiceUpdate(
                     service_contract_id=service_contract.id

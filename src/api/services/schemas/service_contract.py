@@ -8,8 +8,9 @@ class ServiceContractBase(BaseModel):
     """Base schema for service contract data"""
     contract_date: date
     status: ServiceContractStatus = ServiceContractStatus.ACTIVE
-    
-    model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
+
+    model_config = ConfigDict(from_attributes=True,
+                              arbitrary_types_allowed=True)
 
 
 class ServiceContractCreate(ServiceContractBase):
@@ -30,5 +31,5 @@ class ServiceContractRead(ServiceContractBase):
 class ServiceContractUpdate(BaseModel):
     """Schema for updating service contract data"""
     status: Optional[ServiceContractStatus] = None
-    
+
     model_config = ConfigDict(arbitrary_types_allowed=True)

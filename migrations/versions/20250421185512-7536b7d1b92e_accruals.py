@@ -51,7 +51,7 @@ def upgrade() -> None:
                     sa.Column('accrued_amount', sa.Float(), nullable=False),
                     sa.Column('accrual_portion', sa.Float(), nullable=False),
                     sa.Column('status', contract_status_enum, nullable=False),
-                    sa.Column('classes_in_period',
+                    sa.Column('sessions_in_period',
                               sa.Integer(), nullable=False),
                     sa.Column('total_contract_amount',
                               sa.Float(), nullable=False),

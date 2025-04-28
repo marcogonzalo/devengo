@@ -7,9 +7,9 @@ from src.api.common.constants.services import ServiceContractStatus
 
 
 class ProcessingStatus(str, Enum):
-    SUCCESS = "success"
-    PARTIAL = "partial"
-    FAILED = "failed"
+    SUCCESS = "SUCCESS"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
 
 
 class AccruedPeriodBase(BaseModel):
@@ -19,7 +19,7 @@ class AccruedPeriodBase(BaseModel):
     accrued_amount: float = Field(ge=0)
     accrual_portion: float = Field(ge=0, le=1)
     status: ServiceContractStatus = ServiceContractStatus.ACTIVE
-    classes_in_period: int = Field(ge=0)
+    sessions_in_period: int = Field(ge=0)
     total_contract_amount: float = Field(ge=0)
     status_change_date: Optional[date] = None
 

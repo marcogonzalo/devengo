@@ -14,7 +14,7 @@ class AccruedPeriod(BaseModel, TimestampMixin, table=True):
     accrual_portion: float = Field(nullable=False)
     status: ServiceContractStatus = Field(nullable=False, index=True,
                                           default=ServiceContractStatus.ACTIVE.value)
-    classes_in_period: int = Field(nullable=False)
+    sessions_in_period: int = Field(nullable=False)
     total_contract_amount: float = Field(nullable=False)
     status_change_date: Optional[date] = Field(nullable=True)
 
