@@ -160,7 +160,6 @@ class PeriodProcessor:
                 try:
                     # Change the status of the contract to CANCELED
                     contract.status = ServiceContractStatus.CANCELED
-                    self.db.add(contract)
                 except Exception as e:
                     logger.error(
                         f"Error changing contract status to CANCELED: {e}")
@@ -195,6 +194,8 @@ class PeriodProcessor:
 
             # Save to database
             accrued_period = AccruedPeriod(**accrued_period_data.model_dump())
+            contract.accrued_amount += accrued_amount
+            self.db.add(contract)
             self.db.add(accrued_period)
             self.db.commit()
             self.db.refresh(accrued_period)
