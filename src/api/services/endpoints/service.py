@@ -1,10 +1,8 @@
 from api.common.utils.database import get_db
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from typing import List
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from datetime import date
 from src.api.services.schemas.service import ServiceCreate, ServiceRead, ServiceUpdate
-from src.api.services.schemas.service_contract import ServiceContractCreate, ServiceContractRead, ServiceContractUpdate
 from src.api.services.services.service_service import ServiceService
 
 router = APIRouter(prefix="/services", tags=["services"])
@@ -14,7 +12,7 @@ def get_service_service(db: Session = Depends(get_db)):
     return ServiceService(db)
 
 
-@router.post("/", response_model=ServiceRead)
+@router.post("", response_model=ServiceRead)
 def create_service(
     service_data: ServiceCreate,
     service_service: ServiceService = Depends(get_service_service)
@@ -47,7 +45,7 @@ def get_service_by_external_id(
     return service
 
 
-@router.get("/", response_model=List[ServiceRead])
+@router.get("", response_model=List[ServiceRead])
 def get_services(
     skip: int = 0,
     limit: int = 100,

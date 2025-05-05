@@ -9,7 +9,7 @@ from src.api.accruals.services.accrued_period_service import AccruedPeriodServic
 router = APIRouter(prefix="/accruals", tags=["accruals"])
 
 
-@router.post("/", response_model=AccruedPeriodResponse)
+@router.post("", response_model=AccruedPeriodResponse)
 def create_accrual(
     accrual_data: AccruedPeriodCreate,
     db: Session = Depends(get_db)

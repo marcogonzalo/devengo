@@ -3,7 +3,6 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session
 from datetime import date
-from src.api.invoices.models.invoice import Invoice, InvoiceAccrual
 from src.api.invoices.schemas.invoice import InvoiceCreate, InvoiceRead, InvoiceUpdate, InvoiceAccrualCreate, InvoiceAccrualRead
 from src.api.invoices.services.invoice_service import InvoiceService
 
@@ -14,7 +13,7 @@ def get_invoice_service(db: Session = Depends(get_db)):
     return InvoiceService(db)
 
 
-@router.post("/", response_model=InvoiceRead)
+@router.post("", response_model=InvoiceRead)
 def create_invoice(
     invoice_data: InvoiceCreate,
     invoice_service: InvoiceService = Depends(get_invoice_service)
@@ -47,7 +46,7 @@ def get_invoice_by_external_id(
     return invoice
 
 
-@router.get("/", response_model=List[InvoiceRead])
+@router.get("", response_model=List[InvoiceRead])
 def get_invoices(
     skip: int = 0,
     limit: int = 100,

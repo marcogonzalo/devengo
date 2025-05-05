@@ -20,7 +20,7 @@ def get_service_service(db: Session = Depends(get_db)):
     return ServiceService(db)
 
 
-@router.post("/", response_model=ServiceContractRead)
+@router.post("", response_model=ServiceContractRead)
 def create_contract(
     contract_data: ServiceContractCreate,
     service_service: ServiceService = Depends(get_service_service)
