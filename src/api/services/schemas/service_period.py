@@ -11,7 +11,7 @@ class ServicePeriodBase(BaseModel):
     start_date: date
     end_date: date
     status: ServicePeriodStatus = ServicePeriodStatus.ACTIVE
-
+    status_change_date: Optional[date] = None
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 

@@ -8,8 +8,8 @@ from src.api.accruals.services.period_processor import PeriodProcessor
 router = APIRouter(prefix="/accruals", tags=["accruals"])
 
 
-@router.post("/process-period", response_model=ProcessPeriodResponse)
-def process_period(
+@router.post("/process-accrue-in-month", response_model=ProcessPeriodResponse)
+def process_accrue_in_month(
     request: ProcessPeriodRequest,
     db: Session = Depends(get_db)
 ):

@@ -1,7 +1,7 @@
 from datetime import date
 from typing import Optional
 from sqlmodel import Field, Relationship
-from src.api.common.constants.services import ServiceContractStatus
+from src.api.common.constants.services import ServicePeriodStatus
 from src.api.common.models.base import BaseModel, TimestampMixin
 
 
@@ -12,8 +12,8 @@ class AccruedPeriod(BaseModel, TimestampMixin, table=True):
     accrued_amount: float = Field(nullable=False)
     # Percentage of total contract amount accrued (0.0 to 1.0)
     accrual_portion: float = Field(nullable=False)
-    status: ServiceContractStatus = Field(nullable=False, index=True,
-                                          default=ServiceContractStatus.ACTIVE.value)
+    status: ServicePeriodStatus  = Field(nullable=False, index=True,
+                                          default=ServicePeriodStatus.ACTIVE.value)
     sessions_in_period: int = Field(nullable=False)
     total_contract_amount: float = Field(nullable=False)
     status_change_date: Optional[date] = Field(nullable=True)

@@ -29,6 +29,19 @@ class PeriodProcessor:
     def __init__(self, db: Session):
         self.db = db
 
+    def get_amount_to_accrue(self, contract: "ServiceContract", accrual_portion: float) -> float:
+        """
+        Calculate the amount to be accrued for a contract based on the accrual portion.
+        """
+        return (contract.contract_amount - contract.accrued_amount) * accrual_portion
+
+    def get_accrual_portion_and_amount(self, contract: "ServiceContract", sessions_in_month_overlap: int) -> Tuple[float, float]:
+        """
+        Calculate the accrual portion and amount for a contract based on the sessions in month overlap.
+        """
+        accrual_portion = sessions_in_month_overlap / contract.service.total_sessions
+        accrued_amount = self.get_amount_to_accrue(contract, accrual_portion)
+        return accrual_portion, accrued_amount
     def get_service_periods_for_month(self, target_month_start: date) -> List["ServicePeriod"]:
         """Get all service periods active or changing status within the given month."""
         from src.api.services.models import ServicePeriod
@@ -55,8 +68,9 @@ class PeriodProcessor:
                     ]
                 ),
                     (ServicePeriod.status_change_date.is_(None) |
-                     ((ServicePeriod.status_change_date >= month_start) &
-                      (ServicePeriod.status_change_date <= month_end)))
+                     ((ServicePeriod.status_change_date >= month_start)  # &
+                      # (ServicePeriod.status_change_date <= month_end)
+                      ))
                 )))
             .all()
         )
@@ -84,10 +98,11 @@ class PeriodProcessor:
             if not service_period.status_change_date:
                 return default_return_value
 
-            if month_start <= service_period.status_change_date <= month_end:
+            if service_period.status_change_date and month_start <= service_period.status_change_date <= month_end:
                 effective_end_date = service_period.end_date
                 # Get total accrued for the *contract* so far
-                total_accrued_result = self.db.query(func.sum(AccruedPeriod.accrued_amount)) \
+                total_accrued_result = self.db.query(
+                    func.sum(AccruedPeriod.accrued_amount)) \
                     .filter(AccruedPeriod.contract_id == contract.id) \
                     .scalar()
                 total_accrued = total_accrued_result or 0.0
@@ -133,8 +148,8 @@ class PeriodProcessor:
         if total_contract_sessions <= 0:
             return 0.0, 0.0, sessions_in_month_overlap  # Avoid division by zero
 
-        accrual_portion = sessions_in_month_overlap / total_contract_sessions
-        accrued_amount = contract.contract_amount * accrual_portion
+        accrual_portion, accrued_amount = self.get_accrual_portion_and_amount(
+            contract, sessions_in_month_overlap)
 
         return accrued_amount, accrual_portion, sessions_in_month_overlap
 
@@ -156,7 +171,11 @@ class PeriodProcessor:
             )
 
             # Special handling if period was DROPPED this month
-            if service_period.status == ServicePeriodStatus.DROPPED and contract.status == ServiceContractStatus.ACTIVE:
+            if service_period.status == ServicePeriodStatus.DROPPED and contract.status == ServiceContractStatus.ACTIVE and (
+                service_period.status_change_date and 
+                service_period.status_change_date.year == target_month_start.year and 
+                service_period.status_change_date.month == target_month_start.month
+            ):
                 try:
                     # Change the status of the contract to CANCELED
                     contract.status = ServiceContractStatus.CANCELED

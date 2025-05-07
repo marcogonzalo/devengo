@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
-import sqlmodel
 from sqlalchemy.dialects import postgresql
 
 
@@ -20,8 +19,8 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 # Define the enum type (reusing from services migration)
-service_contract_status_enum = "servicecontractstatus"
-service_contract_status_enum_values = ['ACTIVE', 'CANCELED']
+service_period_status_enum = "serviceperiodstatus"
+service_period_status_enum_values = ['ACTIVE', 'POSTPONED', 'DROPPED', 'ENDED']
 
 
 def create_enum(name: str, values: list):
@@ -34,9 +33,9 @@ def create_enum(name: str, values: list):
 def upgrade() -> None:
     """Upgrade schema."""
     # Get the enum type (it should already exist from services migration)
-    contract_status_enum = postgresql.ENUM(
-        *service_contract_status_enum_values,
-        name=service_contract_status_enum,
+    period_status_enum = postgresql.ENUM(
+        *service_period_status_enum_values,
+        name=service_period_status_enum,
         create_type=False
     )
 
@@ -50,7 +49,7 @@ def upgrade() -> None:
                     sa.Column('accrual_date', sa.Date(), nullable=False),
                     sa.Column('accrued_amount', sa.Float(), nullable=False),
                     sa.Column('accrual_portion', sa.Float(), nullable=False),
-                    sa.Column('status', contract_status_enum, nullable=False),
+                    sa.Column('status', period_status_enum, nullable=False),
                     sa.Column('sessions_in_period',
                               sa.Integer(), nullable=False),
                     sa.Column('total_contract_amount',

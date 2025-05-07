@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, List
 from enum import Enum
 
-from src.api.common.constants.services import ServiceContractStatus
+from src.api.common.constants.services import ServicePeriodStatus
 
 
 class ProcessingStatus(str, Enum):
@@ -18,7 +18,7 @@ class AccruedPeriodBase(BaseModel):
     accrual_date: date
     accrued_amount: float = Field(ge=0)
     accrual_portion: float = Field(ge=0, le=1)
-    status: ServiceContractStatus = ServiceContractStatus.ACTIVE
+    status: ServicePeriodStatus = ServicePeriodStatus.ACTIVE
     sessions_in_period: int = Field(ge=0)
     total_contract_amount: float = Field(ge=0)
     status_change_date: Optional[date] = None
@@ -31,7 +31,7 @@ class AccruedPeriodCreate(AccruedPeriodBase):
 class AccruedPeriodUpdate(BaseModel):
     accrued_amount: Optional[float] = Field(ge=0)
     accrual_portion: Optional[float] = Field(ge=0, le=1)
-    status: Optional[ServiceContractStatus]
+    status: Optional[ServicePeriodStatus]
     status_change_date: Optional[date]
 
 
