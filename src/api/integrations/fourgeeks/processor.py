@@ -54,8 +54,11 @@ class EnrollmentProcessor:
 
             start_date = cohort.get("kickoff_date")
             end_date = cohort.get("ending_date")
-            educational_status = enrollment.get(
-                "educational_status", ServicePeriodStatus.ACTIVE)
+            educational_status = map_educational_status(
+                enrollment.get("educational_status", "ACTIVE"))
+
+            status_change_date = get_date(enrollment.get(
+                "updated_at")) if educational_status == ServicePeriodStatus.POSTPONED or educational_status == ServicePeriodStatus.DROPPED else None
 
             if not end_date:
                 self.stats["skipped"] += 1
@@ -68,7 +71,8 @@ class EnrollmentProcessor:
                 cohort_slug=cohort_slug,
                 start_date=start_date,
                 end_date=end_date,
-                status=status
+                status=status,
+                status_change_date=status_change_date
             )
 
         except Exception as e:
@@ -92,6 +96,7 @@ class EnrollmentProcessor:
         contract_id: int,
         cohort_slug: str,
         start_date: str,
+        status_change_date: date | None,
         end_date: str,
         status: ServicePeriodStatus
     ):
@@ -102,7 +107,8 @@ class EnrollmentProcessor:
         if existing_period:
             self.period_service.update_period_status(
                 existing_period.id,
-                status
+                status,
+                status_change_date
             )
             self.stats["updated"] += 1
         else:
@@ -113,7 +119,8 @@ class EnrollmentProcessor:
                 start_date=_adjust_start_date_to_service(
                     start_date, cohort_slug),
                 end_date=get_date(end_date),
-                status=status
+                status=status,
+                status_change_date=status_change_date
             )
             self.period_service.create_period(period_data)
             self.stats["created"] += 1

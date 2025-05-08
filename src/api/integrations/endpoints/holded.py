@@ -1,7 +1,7 @@
 from datetime import datetime
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.logger import logger
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
@@ -16,7 +16,7 @@ from src.api.clients.services.client_service import ClientService
 from src.api.invoices.services.invoice_service import InvoiceService
 from src.api.clients.schemas.client import ClientCreate, ClientExternalIdCreate
 from src.api.invoices.schemas.invoice import InvoiceCreate, InvoiceUpdate
-from src.api.services.schemas.service import ServiceUpdate, ServiceRead
+from src.api.services.schemas.service import ServiceRead
 
 router = APIRouter(prefix="/integrations/holded", tags=["integrations"])
 
@@ -35,7 +35,8 @@ def get_holded_client():
 
 
 def accepted_service(service):
-    return str(service.get("accountNum")).startswith("705000") and service.get("name")[0:2] == "ES"
+    return str(service.get("accountNum")).startswith("705000") and (
+        service.get("name")[0:2] == "ES" or service.get("name")[0:2] == "EU")
 
 
 def _create_client(contact, client_service):
@@ -146,58 +147,58 @@ async def test_holded_integration(request: Request):
         )
 
 
-@router.get("/sync-contacts")
-async def sync_contacts(
-    client_service: ClientService = Depends(get_client_service),
-    holded_client: HoldedClient = Depends(get_holded_client),
-    page: int = 1,
-    per_page: int = 50
-):
-    """Sync contacts from Holded to the local database"""
-    try:
-        contacts = await holded_client.list_contacts(page=page, per_page=per_page)
+# @router.get("/sync-contacts")
+# async def sync_contacts(
+#     client_service: ClientService = Depends(get_client_service),
+#     holded_client: HoldedClient = Depends(get_holded_client),
+#     page: int = 1,
+#     per_page: int = 50
+# ):
+#     """Sync contacts from Holded to the local database"""
+#     try:
+#         contacts = await holded_client.list_contacts(page=page, per_page=per_page)
 
-        created_count = 0
-        skipped_count = 0
-        error_count = 0
-        errors = []
+#         created_count = 0
+#         skipped_count = 0
+#         error_count = 0
+#         errors = []
 
-        for contact in contacts:
-            try:
-                # Check if client already exists by external ID
-                existing_client = client_service.get_client_by_external_id(
-                    "holded", contact.get("id"))
+#         for contact in contacts:
+#             try:
+#                 # Check if client already exists by external ID
+#                 existing_client = client_service.get_client_by_external_id(
+#                     "holded", contact.get("id"))
 
-                if existing_client:
-                    skipped_count += 1
-                    continue
+#                 if existing_client:
+#                     skipped_count += 1
+#                     continue
 
-                # Create new client
-                if not contact.get("email"):
-                    skipped_count += 1
-                    continue
+#                 # Create new client
+#                 if not contact.get("email"):
+#                     skipped_count += 1
+#                     continue
 
-                _create_client(contact, client_service)
+#                 _create_client(contact, client_service)
 
-                created_count += 1
+#                 created_count += 1
 
-            except Exception as e:
-                error_count += 1
-                errors.append(str(e))
+#             except Exception as e:
+#                 error_count += 1
+#                 errors.append(str(e))
 
-        return {
-            "success": True,
-            "created": created_count,
-            "skipped": skipped_count,
-            "errors": error_count,
-            "error_details": errors
-        }
+#         return {
+#             "success": True,
+#             "created": created_count,
+#             "skipped": skipped_count,
+#             "errors": error_count,
+#             "error_details": errors
+#         }
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to sync contacts: {str(e)}"
-        )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to sync contacts: {str(e)}"
+#         )
 
 
 @router.get("/sync-invoices-and-clients")
@@ -301,59 +302,59 @@ async def sync_invoices_and_clients(
         )
 
 
-@router.get("/sync-invoices")
-async def sync_invoices(
-    client_service: ClientService = Depends(get_client_service),
-    invoice_service: InvoiceService = Depends(get_invoice_service),
-    holded_client: HoldedClient = Depends(get_holded_client),
-    start_timestamp: Optional[int] = None,
-    end_timestamp: Optional[int] = None
-):
-    """Sync invoices from Holded to the local database"""
-    try:
-        documents = await holded_client.list_documents(starttmp=start_timestamp, endtmp=end_timestamp)
+# @router.get("/sync-invoices")
+# async def sync_invoices(
+#     client_service: ClientService = Depends(get_client_service),
+#     invoice_service: InvoiceService = Depends(get_invoice_service),
+#     holded_client: HoldedClient = Depends(get_holded_client),
+#     start_timestamp: Optional[int] = None,
+#     end_timestamp: Optional[int] = None
+# ):
+#     """Sync invoices from Holded to the local database"""
+#     try:
+#         documents = await holded_client.list_documents(starttmp=start_timestamp, endtmp=end_timestamp)
 
-        created_count = 0
-        skipped_count = 0
-        error_count = 0
-        errors = []
+#         created_count = 0
+#         skipped_count = 0
+#         error_count = 0
+#         errors = []
 
-        for document in documents:
-            try:
-                # Check if invoice already exists
-                existing_invoice = invoice_service.get_invoice_by_external_id(
-                    document.get("id"))
+#         for document in documents:
+#             try:
+#                 # Check if invoice already exists
+#                 existing_invoice = invoice_service.get_invoice_by_external_id(
+#                     document.get("id"))
 
-                if existing_invoice:
-                    skipped_count += 1
-                    continue
+#                 if existing_invoice:
+#                     skipped_count += 1
+#                     continue
 
-                # Get client by Holded contact ID
-                contact_id = document.get("contactId")
-                client = client_service.get_client_by_external_id(
-                    "holded", contact_id)
+#                 # Get client by Holded contact ID
+#                 contact_id = document.get("contactId")
+#                 client = client_service.get_client_by_external_id(
+#                     "holded", contact_id)
 
-                # Create invoice
-                invoice = _create_invoice(document, client, invoice_service)
-                created_count += 1
+#                 # Create invoice
+#                 invoice = _create_invoice(document, client, invoice_service)
+#                 created_count += 1
 
-            except Exception as e:
-                error_count += 1
-                errors.append(str(e))
+#             except Exception as e:
+#                 error_count += 1
+#                 errors.append(str(e))
 
-        return {
-            "success": True,
-            "created": created_count,
-            "skipped": skipped_count,
-            "errors": error_count,
-            "error_details": errors
-        }
+#         return {
+#             "success": True,
+#             "created": created_count,
+#             "skipped": skipped_count,
+#             "errors": error_count,
+#             "error_details": errors
+#         }
 
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to sync invoices: {str(e)}"
-        )
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to sync invoices: {str(e)}"
+#         )
 
 
 @router.get("/sync-services")

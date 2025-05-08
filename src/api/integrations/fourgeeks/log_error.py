@@ -12,7 +12,7 @@ def log_contract_error(error: Exception, contract_id: int) -> str:
     return error_msg
 
 
-def log_student_error(error: Exception, client_id: int) -> str:
-    error_msg = f"Error processing student {client_id}: {str(error)}"
+def log_student_error(error: Exception) -> str:
+    error_msg = f"Error processing student: {str(error)}"
     logger.error(error_msg)
     return error_msg

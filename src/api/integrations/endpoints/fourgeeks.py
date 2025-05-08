@@ -312,7 +312,7 @@ def sync_students_from_clients(
                 processor.stats["errors"] += 1
                 if error_msg:  # Avoid adding None if find_and_link_student raises unexpected error
                     processor.stats["error_details"].append(
-                        log_student_error(error_msg, client.id))
+                        log_student_error(error_msg))
 
         logger.info(
             f"Sync completed. Linked: {processor.stats['linked']}, Not Found: {processor.stats['not_found']}, Errors: {processor.stats['errors']}")
