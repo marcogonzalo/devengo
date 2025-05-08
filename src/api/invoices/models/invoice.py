@@ -1,8 +1,11 @@
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
 from datetime import date
 from sqlmodel import Field, Relationship, Column, JSON
 from src.api.common.models.base import BaseModel, TimestampMixin
 from src.api.clients.models import Client
+
+if TYPE_CHECKING:
+    from src.api.services.models.service_contract import ServiceContract
 
 
 class Invoice(BaseModel, TimestampMixin, table=True):
@@ -34,34 +37,6 @@ class Invoice(BaseModel, TimestampMixin, table=True):
         default=None, foreign_key="servicecontract.id")
     service_contract: Optional["ServiceContract"] = Relationship(
         back_populates="invoices")
-
-    # Relationships
-    accruals: List["InvoiceAccrual"] = Relationship(back_populates="invoice")
-
-    class Config:
-        from_attributes = True
-
-
-class InvoiceAccrual(BaseModel, TimestampMixin, table=True):
-    """
-    Model to store accrual portions of invoices
-    """
-    id: Optional[int] = Field(default=None, primary_key=True)
-
-    # Invoice relationship
-    invoice_id: int = Field(foreign_key="invoice.id")
-    invoice: Invoice = Relationship(back_populates="accruals")
-
-    # Service relationship (optional)
-    # service_id: Optional[int] = Field(default=None, foreign_key="service.id")
-
-    # Accrual details
-    accrual_date: date  # The month/year this accrual applies to
-    amount: float  # The amount accrued for this period
-    percentage: float  # The percentage of the total invoice this accrual represents
-
-    # Status
-    status: str = "pending"  # e.g., "pending", "processed", "cancelled"
 
     class Config:
         from_attributes = True

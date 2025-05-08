@@ -42,28 +42,3 @@ class InvoiceUpdate(BaseModel):
     status: Optional[str] = None
     client_id: Optional[int] = None
     service_contract_id: Optional[int] = None
-
-class InvoiceAccrualBase(BaseModel):
-    """Base schema for invoice accrual data"""
-    accrual_date: date
-    amount: float
-    percentage: float
-    status: int = "pending"
-
-    class Config:
-        from_attributes = True
-
-
-class InvoiceAccrualCreate(InvoiceAccrualBase):
-    """Schema for creating a new invoice accrual"""
-    invoice_id: int
-    # service_id: Optional[int] = None
-
-
-class InvoiceAccrualRead(InvoiceAccrualBase):
-    """Schema for reading invoice accrual data"""
-    id: int
-    invoice_id: int
-    # service_id: Optional[int] = None
-    created_at: datetime
-    updated_at: datetime

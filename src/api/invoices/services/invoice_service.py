@@ -1,8 +1,7 @@
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from sqlmodel import Session, select
-from datetime import date
-from src.api.invoices.models.invoice import Invoice, InvoiceAccrual
-from src.api.invoices.schemas.invoice import InvoiceCreate, InvoiceUpdate, InvoiceAccrualCreate
+from src.api.invoices.models.invoice import Invoice
+from src.api.invoices.schemas.invoice import InvoiceCreate, InvoiceUpdate
 
 
 class InvoiceService:
@@ -68,47 +67,3 @@ class InvoiceService:
         self.db.delete(invoice)
         self.db.commit()
         return True
-
-    def create_invoice_accrual(self, accrual_data: InvoiceAccrualCreate) -> InvoiceAccrual:
-        """Create a new invoice accrual"""
-        accrual = InvoiceAccrual(
-            invoice_id=accrual_data.invoice_id,
-            # service_id=accrual_data.service_id,
-            accrual_date=accrual_data.accrual_date,
-            amount=accrual_data.amount,
-            percentage=accrual_data.percentage,
-            status=accrual_data.status
-        )
-
-        self.db.add(accrual)
-        self.db.commit()
-        self.db.refresh(accrual)
-        return accrual
-
-    def get_invoice_accruals(self, invoice_id: int) -> List[InvoiceAccrual]:
-        """Get all accruals for an invoice"""
-        return self.db.exec(select(InvoiceAccrual).where(InvoiceAccrual.invoice_id == invoice_id)).all()
-
-    def get_accruals_by_date_range(self, start_date: date, end_date: date) -> List[InvoiceAccrual]:
-        """Get all accruals within a date range"""
-        return self.db.exec(
-            select(InvoiceAccrual)
-            .where(InvoiceAccrual.accrual_date >= start_date)
-            .where(InvoiceAccrual.accrual_date <= end_date)
-        ).all()
-
-    def get_accruals_by_month_year(self, year: int, month: int) -> List[InvoiceAccrual]:
-        """Get all accruals for a specific month and year"""
-        # This assumes accrual_date is always the first day of the month
-        # In a real implementation, you might want to check the month and year components
-        start_date = date(year, month, 1)
-        if month == 12:
-            end_date = date(year + 1, 1, 1)
-        else:
-            end_date = date(year, month + 1, 1)
-
-        return self.db.exec(
-            select(InvoiceAccrual)
-            .where(InvoiceAccrual.accrual_date >= start_date)
-            .where(InvoiceAccrual.accrual_date < end_date)
-        ).all()

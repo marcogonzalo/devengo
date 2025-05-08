@@ -1,3 +1,3 @@
-from src.api.invoices.models.invoice import Invoice, InvoiceAccrual
+from src.api.invoices.models.invoice import Invoice
 
-__all__ = ["Invoice", "InvoiceAccrual"]
+__all__ = ["Invoice"]

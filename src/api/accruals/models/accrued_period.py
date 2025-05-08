@@ -18,9 +18,9 @@ class AccruedPeriod(BaseModel, TimestampMixin, table=True):
     total_contract_amount: float = Field(nullable=False)
     status_change_date: Optional[date] = Field(nullable=True)
 
-    # Foreign key to the associated service contract
-    contract_id: int = Field(foreign_key="servicecontract.id", nullable=False)
-    contract: "ServiceContract" = Relationship(back_populates="accruals")
+    # Foreign key to the associated contract accrual
+    contract_accrual_id: int = Field(foreign_key="contractaccrual.id", nullable=False)
+    contract_accrual: "ContractAccrual" = Relationship(back_populates="accrued_periods")
 
     # Foreign key to the associated service period
     service_period_id: Optional[int] = Field(

@@ -1,4 +1,4 @@
-"""services
+"""Services
 
 Revision ID: 2402093cc68c
 Revises: 002e53430f02
@@ -85,7 +85,6 @@ def upgrade() -> None:
                     sa.Column('contract_amount', sa.Float(), nullable=False),
                     sa.Column('contract_currency',
                               sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-                    sa.Column('accrued_amount', sa.Float(), nullable=False),
                     sa.Column('status', contract_status_enum, nullable=False),
                     sa.ForeignKeyConstraint(['client_id'], ['client.id'], ),
                     sa.ForeignKeyConstraint(['service_id'], ['service.id'], ),
@@ -105,14 +104,11 @@ def upgrade() -> None:
                     sa.Column('start_date', sa.Date(), nullable=False),
                     sa.Column('end_date', sa.Date(), nullable=False),
                     sa.Column('status', period_status_enum, nullable=False),
+                    sa.Column('status_change_date', sa.Date(), nullable=True),
                     sa.ForeignKeyConstraint(
                         ['contract_id'], ['servicecontract.id'], ),
                     sa.PrimaryKeyConstraint('id')
                     )
-    op.create_index(op.f('ix_serviceperiod_end_date'),
-                    'serviceperiod', ['end_date'], unique=False)
-    op.create_index(op.f('ix_serviceperiod_start_date'),
-                    'serviceperiod', ['start_date'], unique=False)
     op.create_index(op.f('ix_serviceperiod_status'),
                     'serviceperiod', ['status'], unique=False)
     op.add_column('invoice', sa.Column(
@@ -132,10 +128,6 @@ def downgrade() -> None:
                        'invoice', type_='foreignkey')
     op.drop_column('invoice', 'service_contract_id')
     op.drop_index(op.f('ix_serviceperiod_status'), table_name='serviceperiod')
-    op.drop_index(op.f('ix_serviceperiod_start_date'),
-                  table_name='serviceperiod')
-    op.drop_index(op.f('ix_serviceperiod_end_date'),
-                  table_name='serviceperiod')
     op.drop_table('serviceperiod')
     op.drop_table('servicecontract')
     op.drop_index(op.f('ix_service_external_id'), table_name='service')

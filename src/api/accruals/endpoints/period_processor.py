@@ -8,8 +8,8 @@ from src.api.accruals.services.period_processor import PeriodProcessor
 router = APIRouter(prefix="/accruals", tags=["accruals"])
 
 
-@router.post("/process-accrue-in-month", response_model=ProcessPeriodResponse)
-def process_accrue_in_month(
+@router.post("/process-accruals-in-month", response_model=ProcessPeriodResponse)
+def process_accruals_in_month(
     request: ProcessPeriodRequest,
     db: Session = Depends(get_db)
 ):
@@ -24,7 +24,7 @@ def process_accrue_in_month(
     processor = PeriodProcessor(db)
 
     # Get all relevant service periods for the month
-    service_periods = processor.get_service_periods_for_month(
+    service_periods = processor.get_service_periods_in_month(
         request.period_start_date)
 
     # Process each service period
@@ -33,7 +33,7 @@ def process_accrue_in_month(
     failed = 0
 
     for period in service_periods:
-        result = processor.process_service_period(
+        result = processor.accrue_service_period(
             period, request.period_start_date)
         results.append(result)
 

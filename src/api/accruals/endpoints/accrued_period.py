@@ -18,18 +18,6 @@ def create_accrual(
     return service.create_accrual(accrual_data)
 
 
-@router.get("/{accrual_id}", response_model=AccruedPeriodResponse)
-def get_accrual(
-    accrual_id: int,
-    db: Session = Depends(get_db)
-):
-    service = AccruedPeriodService(db)
-    accrual = service.get_accrual(accrual_id)
-    if not accrual:
-        raise HTTPException(status_code=404, detail="Accrual not found")
-    return accrual
-
-
 @router.get("/contract/{contract_id}", response_model=List[AccruedPeriodResponse])
 def get_accruals_by_contract(
     contract_id: int,
@@ -48,6 +36,18 @@ def get_accruals_by_period(
 ):
     service = AccruedPeriodService(db)
     return service.get_accruals_by_period(year, month)
+
+
+@router.get("/{accrual_id}", response_model=AccruedPeriodResponse)
+def get_accrual(
+    accrual_id: int,
+    db: Session = Depends(get_db)
+):
+    service = AccruedPeriodService(db)
+    accrual = service.get_accrual(accrual_id)
+    if not accrual:
+        raise HTTPException(status_code=404, detail="Accrual not found")
+    return accrual
 
 
 @router.patch("/{accrual_id}", response_model=AccruedPeriodResponse)

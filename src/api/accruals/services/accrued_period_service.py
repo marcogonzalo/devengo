@@ -17,7 +17,12 @@ class AccruedPeriodService:
         return self.db.query(AccruedPeriod).filter(AccruedPeriod.id == accrual_id).first()
 
     def get_accruals_by_contract(self, contract_id: int) -> List[AccruedPeriod]:
-        return self.db.query(AccruedPeriod).filter(AccruedPeriod.contract_id == contract_id).all()
+        return (
+            self.db.query(AccruedPeriod)
+            .join(AccruedPeriod.contract_accrual)
+            .filter(AccruedPeriod.contract_accrual.has(contract_id=contract_id))
+            .all()
+        )
 
     def get_accruals_by_period(self, year: int, month: int) -> List[AccruedPeriod]:
         return (
