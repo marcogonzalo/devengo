@@ -63,8 +63,9 @@ class ContractProcessingResult(BaseModel):
 class ProcessPeriodResponse(BaseModel):
     period_start_date: date
     total_periods_processed: int
-    successful_periods: int
-    failed_periods: int
+    successful_accruals: int
+    failed_accruals: int
+    existing_accruals: int
     results: List[ContractProcessingResult]
 
 

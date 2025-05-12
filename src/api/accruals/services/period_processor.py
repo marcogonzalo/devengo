@@ -4,18 +4,19 @@ from datetime import date, timedelta
 from typing import List, Tuple, TYPE_CHECKING
 from sqlalchemy.orm import Session, joinedload
 from sqlmodel import func, or_, and_
+from src.api.accruals.constants.accruals import ContractAccrualStatus
 from src.api.common.constants.services import ServiceContractStatus, ServicePeriodStatus
-from src.api.accruals.models.accrued_period import AccruedPeriod
+from src.api.accruals.models import AccruedPeriod, ContractAccrual
 from src.api.accruals.schemas import (
     AccruedPeriodCreate,
     ContractProcessingResult,
     ProcessingStatus
 )
-from src.api.accruals.models.contract_accrual import ContractAccrual
 
 # Use TYPE_CHECKING for type hints to avoid runtime import if ServicePeriod is complex
 if TYPE_CHECKING:
     from src.api.services.models import ServicePeriod
+    from src.api.services.models.service_contract import ServiceContract
 
 
 def get_month_range(year: int, month: int) -> Tuple[date, date]:
@@ -38,45 +39,15 @@ class PeriodProcessor:
     ) -> Tuple[float, float, int]:
         """
         Calculate accrual amount, portion, and sessions for a service period within a target month.
-        Returns (accrued_amount, accrual_portion, sessions_in_month_overlap)
+        Returns (accrual_amount, accrual_portion, sessions_in_month_overlap)
         """
         default_return_value = (0.0, 0.0, 0)
         month_start, month_end = get_month_range(
             target_month_start.year, target_month_start.month)
-        contract = service_period.contract
         # Determine the overlap of the service period with the target month
         overlap_start = max(service_period.start_date, month_start)
         overlap_end = min(service_period.end_date, month_end)
         effective_end_date = overlap_end
-
-        # If period is DROPPED, remaining accrual is completed at drop date
-        if service_period.status == ServicePeriodStatus.DROPPED:
-            if not service_period.status_change_date:
-                return default_return_value
-
-            if service_period.status_change_date and month_start <= service_period.status_change_date <= month_end:
-                effective_end_date = service_period.end_date
-                # Get total accrued for the *contract* so far
-                total_accrued_result = self.db.query(
-                    func.sum(AccruedPeriod.accrued_amount)) \
-                    .filter(AccruedPeriod.contract_accrual_id == contract_accrual.id) \
-                    .scalar()
-                total_accrued = total_accrued_result or 0.0
-
-                # Accrue the remaining contract amount in this period
-                remaining_amount = contract.contract_amount - total_accrued
-                if remaining_amount > accrued_amount:  # Avoid double counting if calculated accrual is part of remaining
-                    # Recalculate portion based on remaining amount
-                    new_remaining = remaining_amount - accrued_amount
-                    accrued_amount += new_remaining
-                    if contract.contract_amount > 0:
-                        accrual_portion = accrued_amount / contract.contract_amount
-                    else:
-                        accrual_portion = 0.0
-                return accrued_amount, accrual_portion, sessions_in_month_overlap
-            elif service_period.status_change_date < month_start:
-                # Dropped before this month
-                return default_return_value
 
         # If the period is POSTPONED, accrual stops at the beginning of the postponement
         if service_period.status == ServicePeriodStatus.POSTPONED:
@@ -89,54 +60,74 @@ class PeriodProcessor:
             elif service_period.status_change_date and service_period.status_change_date < month_start:
                 # Postponed before this month started
                 return default_return_value
-        
+
+        # Ensure sessions in month overlap is not greater than sessions remaining
+        # This can happen if there were some sessions that matched with holidays in previous months
+        if overlap_end < month_end:
+            sessions_in_month_overlap = contract_accrual.sessions_remaining_to_accrue
+        else:
+            sessions_in_month_overlap = service_period.get_sessions_between(
+                overlap_start, effective_end_date)
+
+        # Get accrued totals up to this month
+        total_accrued_amount, total_accrued_sessions = contract_accrual.total_amount_accrued, contract_accrual.total_sessions_accrued
+        # self._get_accrued_totals_before_month(
+        # contract_accrual.id, target_month_start.year, target_month_start.month)
+
+        # Get the remaining sessions and amount for the contract after accruals up to this month
+        sessions_remaining, amount_remaining = contract_accrual.sessions_remaining_to_accrue, contract_accrual.remaining_amount_to_accrue
+        # self._get_sessions_and_amount_remaining(
+        #     contract_accrual, total_accrued_sessions, total_accrued_amount)
+
+        # Calculate the accrual portion and amount for the contract for this month
+        portion_to_accrue, amount_to_accrue = self._get_accrual_portion_and_amount(
+            sessions_in_month_overlap, sessions_remaining, amount_remaining)
+
+        # If period is DROPPED, remaining accrual is completed at drop date
+        if service_period.status == ServicePeriodStatus.DROPPED:
+            if not service_period.status_change_date:
+                return default_return_value
+
+            if service_period.status_change_date and month_start <= service_period.status_change_date <= month_end:
+                effective_end_date = service_period.end_date
+                
+                # Accrue the remaining contract amount in this period
+                sessions_in_month_overlap = sessions_remaining
+                portion_to_accrue, amount_to_accrue = self._get_accrual_portion_and_amount(
+                    sessions_in_month_overlap, sessions_remaining, amount_remaining)
+                return amount_to_accrue, portion_to_accrue, sessions_in_month_overlap
+            elif service_period.status_change_date < month_start:
+                # Dropped before this month
+                return default_return_value
+
         total_contract_sessions = contract_accrual.total_sessions_to_accrue
-        if total_contract_sessions <= 0:
-            return 0.0, 0.0, 1  # Avoid division by zero
-        
+
+        if sessions_in_month_overlap <= 0 or total_contract_sessions <= 0:
+            return default_return_value
+
         # Ensure start is not after end
         if overlap_start > effective_end_date:
             return default_return_value
 
-        # Get accrued totals up to this month
-        total_accrued_amount, total_accrued_sessions = self._get_accrued_totals_before_month(
-            contract_accrual.id, target_month_start.year, target_month_start.month)
+        # if sessions_remaining <= 0 or amount_remaining <= 0:
+        #     return default_return_value
 
-        sessions_remaining, amount_remaining = self._get_sessions_and_amount_remaining(
-            contract_accrual, total_accrued_sessions, total_accrued_amount)
-    
-        if sessions_remaining <= 0 or amount_remaining <= 0:
-            return 0.0, 0.0, 1
-        
-        # Calculate sessions for the overlapping period
-        sessions_in_month_overlap = service_period.get_sessions_between(
-            overlap_start, effective_end_date)
-        if sessions_in_month_overlap <= 0:
-            return default_return_value
-        
-        # Ensure sessions in month overlap is not greater than sessions remaining
-        # This can happen if there were some sessions that matched with holidays in previous months
-        if sessions_in_month_overlap > sessions_remaining:
-            sessions_in_month_overlap = sessions_remaining
-        
-        accrual_portion, accrued_amount = self._get_accrual_portion_and_amount(
-            sessions_in_month_overlap, sessions_remaining, amount_remaining)
-
-        return accrued_amount, accrual_portion, sessions_in_month_overlap
+        return amount_to_accrue, portion_to_accrue, sessions_in_month_overlap
 
     def _get_accrual_portion_and_amount(self, sessions_in_month_overlap: int, sessions_remaining: int, amount_remaining: float) -> Tuple[float, float]:
         """
         Calculate the accrual portion and amount for a contract based on the sessions in month overlap.
         """
-
-        accrual_portion = sessions_in_month_overlap / sessions_remaining
-        accrued_amount = accrual_portion * amount_remaining
-        return accrual_portion, accrued_amount
+        portion_to_accrue = round(sessions_in_month_overlap / sessions_remaining, 2)
+        amount_to_accrue = round(amount_remaining * portion_to_accrue, 2)
+        return portion_to_accrue, amount_to_accrue
 
     def _get_accrued_totals_before_month(self, contract_accrual_id: int, year: int, month: int) -> Tuple[float, int]:
         """
         Returns the total accrued amount and sessions for a contract up to (but not including) the given year and month.
         """
+
+        # Get total accrued amount and sessions from accrued periods
         total_accrued_amount = self.db.query(func.coalesce(func.sum(AccruedPeriod.accrued_amount), 0.0)).filter(
             AccruedPeriod.contract_accrual_id == contract_accrual_id,
             or_(
@@ -159,18 +150,14 @@ class PeriodProcessor:
         ).scalar() or 0
         return total_accrued_amount, total_accrued_sessions
 
-    def _get_contract_accrual(self, contract_id: int) -> ContractAccrual:
-        accrual = self.db.query(ContractAccrual).filter(
-            ContractAccrual.contract_id == contract_id).first()
+    def _get_contract_accrual(self, contract: "ServiceContract") -> ContractAccrual:
+        accrual = contract.contract_accrual
         if not accrual:
             # Create ContractAccrual if it does not exist
-            from src.api.services.models.service_contract import ServiceContract
-            contract = self.db.get(ServiceContract, contract_id)
-            if not contract:
+            if not contract.service:
                 raise ValueError(
-                    f"No ServiceContract found for id={contract_id}")
-            service = contract.service
-            total_sessions = service.total_sessions if service else 0
+                    f"No Service found for id={contract.id}")
+            total_sessions = contract.service.total_sessions
             accrual = ContractAccrual(
                 contract_id=contract.id,
                 total_amount_to_accrue=contract.contract_amount,
@@ -187,7 +174,7 @@ class PeriodProcessor:
 
     def _get_sessions_and_amount_remaining(self, contract_accrual: ContractAccrual, total_accrued_sessions: int, total_accrued_amount: float) -> Tuple[int, float]:
         """
-        Calculate the remaining sessions and amount for a contract based on the total accrued sessions and amount.
+        Calculate the new remaining sessions and amount for a contract based on the total accrued sessions and amount.
         """
         sessions_remaining = contract_accrual.total_sessions_to_accrue - total_accrued_sessions
         amount_remaining = contract_accrual.total_amount_to_accrue - total_accrued_amount
@@ -198,20 +185,44 @@ class PeriodProcessor:
         contract_accrual.remaining_amount_to_accrue -= accrued_amount
         contract_accrual.total_sessions_accrued += sessions_in_month
         contract_accrual.sessions_remaining_to_accrue -= sessions_in_month
-        if contract_accrual.remaining_amount_to_accrue == 0:
-            contract_accrual.accrual_status = "COMPLETED"
+        if contract_accrual.accrual_status == ContractAccrualStatus.ACTIVE and contract_accrual.remaining_amount_to_accrue < 1 and contract_accrual.sessions_remaining_to_accrue == 0:
+            contract_accrual.accrual_status = ContractAccrualStatus.COMPLETED.value
         return contract_accrual
+
+    def get_contract_ids_with_accruals_in_month(self, target_month_start: date) -> List[int]:
+        """
+        Get all existing accruals for a target month.
+        """
+        from sqlalchemy import extract
+        # Query AccruedPeriod with joined ContractAccrual data
+        # Query to get service_period_id and contract_id from accrued periods in the target month
+        results = self.db.query(
+            ContractAccrual.contract_id
+        ).select_from(AccruedPeriod).join(
+            ContractAccrual,
+            AccruedPeriod.contract_accrual_id == ContractAccrual.id
+        ).filter(
+            extract('year', AccruedPeriod.accrual_date) == target_month_start.year,
+            extract('month', AccruedPeriod.accrual_date) == target_month_start.month
+        ).all()
+
+        # Return a list of service period IDs that already have accruals for this month
+        return [result[0] for result in results]  # Return only contract_id
 
     def get_service_periods_in_month(self, target_month_start: date) -> List["ServicePeriod"]:
         """Get all service periods active or changing status within the given month."""
-        from src.api.services.models import ServicePeriod
+        from src.api.services.models import ServicePeriod, ServiceContract
 
         month_start, month_end = get_month_range(
             target_month_start.year, target_month_start.month)
 
         return (
             self.db.query(ServicePeriod)
-            .options(joinedload(ServicePeriod.contract))  # Eager load contract
+            .options(
+                joinedload(ServicePeriod.contract),  # Eager load contract
+                joinedload(ServicePeriod.contract).joinedload(
+                    ServiceContract.contract_accrual)  # Eager load contract accrual
+            )
             .filter(
                 # Period overlaps with the month
                 (ServicePeriod.start_date <= month_end) &
@@ -248,15 +259,24 @@ class PeriodProcessor:
         }
         try:
             # Fetch or create ContractAccrual once
-            contract_accrual = self._get_contract_accrual(contract.id)
+            contract_accrual = self._get_contract_accrual(contract)
+
+            # Check if the accrual is completed
+            if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
+                return ContractProcessingResult(
+                    **result_args,
+                    status=ProcessingStatus.SUCCESS,
+                    message="Accrual is completed, skipping accrual."
+                )
         except Exception as e:
             return ContractProcessingResult(
                 **result_args,
                 status=ProcessingStatus.FAILED,
                 message=f"Error generating ContractAccrual for contract {contract.id}: {str(e)}"
             )
+
         # Calculate standard accrual for the overlapping period/month
-        accrued_amount, accrual_portion, sessions_in_month = self._calculate_accrual_for_period(
+        amount_to_accrue, portion_to_accrue, sessions_in_month = self._calculate_accrual_for_period(
             service_period, target_month_start, contract_accrual
         )
 
@@ -278,7 +298,7 @@ class PeriodProcessor:
                     f"Error changing contract status to CANCELED: {e}")
 
         # Only create a record if there's something to accrue
-        if accrued_amount <= 0:
+        if amount_to_accrue <= 0:
             return ContractProcessingResult(
                 **result_args,
                 status=ProcessingStatus.SUCCESS,
@@ -290,8 +310,8 @@ class PeriodProcessor:
                 contract_accrual_id=contract_accrual.id,
                 service_period_id=service_period.id,
                 accrual_date=target_month_start,  # Use the first day of the month
-                accrued_amount=round(accrued_amount, 2),  # Round to cents
-                accrual_portion=accrual_portion,
+                accrued_amount=amount_to_accrue,  # Round to cents
+                accrual_portion=portion_to_accrue,
                 # Status reflects the period's status during the month's overlap
                 status=service_period.status,
                 # sessions calculated for the month overlap
@@ -308,7 +328,7 @@ class PeriodProcessor:
             return ContractProcessingResult(
                 **result_args,
                 status=ProcessingStatus.FAILED,
-                message=f"Error generating AccruedPeriod for accrual {contract_accrual.id}: {str(e)}"
+                message=f"Error generating AccruedPeriod for Contract Accrual {contract_accrual.id}: {str(e)}"
             )
 
         try:
@@ -318,7 +338,7 @@ class PeriodProcessor:
 
             # Update ContractAccrual
             contract_accrual = self._update_contract_accrual(
-                contract_accrual, sessions_in_month, accrued_amount)
+                contract_accrual, sessions_in_month, amount_to_accrue)
             self.db.add(contract_accrual)
 
             self.db.commit()

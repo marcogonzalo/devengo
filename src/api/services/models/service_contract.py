@@ -9,7 +9,7 @@ from src.api.clients.models.client import Client
 
 if TYPE_CHECKING:
     from src.api.services.models.service import Service
-
+    from src.api.accruals.models.contract_accrual import ContractAccrual
 
 class ServiceContract(BaseModel, TimestampMixin, table=True):
     """
@@ -37,7 +37,7 @@ class ServiceContract(BaseModel, TimestampMixin, table=True):
     # Relationships
     invoices: List[Invoice] = Relationship(back_populates="service_contract")
     periods: List[ServicePeriod] = Relationship(back_populates="contract")
-
+    contract_accrual: "ContractAccrual" = Relationship(back_populates="contract")
     class Config:
         from_attributes = True
         arbitrary_types_allowed = True

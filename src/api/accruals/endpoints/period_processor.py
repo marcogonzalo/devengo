@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from src.api.common.utils.database import get_db
@@ -26,13 +26,24 @@ def process_accruals_in_month(
     # Get all relevant service periods for the month
     service_periods = processor.get_service_periods_in_month(
         request.period_start_date)
+          
+    # Get a list of all existing accruals for the month
+    contract_ids_with_accruals = processor.get_contract_ids_with_accruals_in_month(
+        request.period_start_date)
 
     # Process each service period
     results = []
+    total_processed = len(service_periods)
     successful = 0
     failed = 0
+    existing = len(contract_ids_with_accruals)
 
-    for period in service_periods:
+    # Exclude periods that already have an accrual
+    service_periods = [
+        period for period in service_periods
+        if period.contract.id not in contract_ids_with_accruals
+    ]
+    for period in service_periods:        
         result = processor.accrue_service_period(
             period, request.period_start_date)
         results.append(result)
@@ -45,16 +56,12 @@ def process_accruals_in_month(
         elif result.status == ProcessingStatus.FAILED:
             failed += 1
 
-    # Note: successful + failed might not equal total_periods if some periods resulted in 0 accrual without errors
-    # Adjust counting logic if needed based on how 'success' should be defined for zero-accrual cases
-
-    total_processed = len(service_periods)  # Number of periods attempted
-
     return ProcessPeriodResponse(
         period_start_date=request.period_start_date,
         total_periods_processed=total_processed,
         # Periods successfully processed (incl. 0 accrual)
-        successful_periods=successful,
-        failed_periods=failed,  # Periods that failed processing
+        successful_accruals=successful,
+        failed_accruals=failed,  # Periods that failed processing
+        existing_accruals=existing,
         results=results
     )
