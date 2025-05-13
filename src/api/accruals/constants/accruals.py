@@ -5,8 +5,9 @@ from sqlalchemy.dialects.postgresql import ENUM
 
 class ContractAccrualStatus(str, Enum):
     ACTIVE = "ACTIVE"
-    COMPLETED = "COMPLETED"
     CANCELED = "CANCELED"
+    COMPLETED = "COMPLETED"
+    PAUSED = "PAUSED"
 
 contract_accrual_status_enum = ENUM(
     *[x.value for x in ContractAccrualStatus],
