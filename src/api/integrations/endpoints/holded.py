@@ -214,8 +214,11 @@ async def sync_invoices_and_clients(
 ):
     """Sync invoices with their respective clients from Holded to the local database"""
     try:
-        documents = await holded_client.list_documents(starttmp=start_timestamp, endtmp=end_timestamp)
-
+        invoices = await holded_client.list_documents(
+            document_type="invoice", starttmp=start_timestamp, endtmp=end_timestamp)
+        credit_notes = await holded_client.list_documents(
+            document_type="creditnote", starttmp=start_timestamp, endtmp=end_timestamp)
+        documents = invoices + credit_notes
         processed_count = 0
         skipped_count = 0
         error_count = 0
@@ -242,6 +245,8 @@ async def sync_invoices_and_clients(
                 new_amount = 0
                 if not invoice:
                     try:
+                        if document.get("from", {}).get("docType") == "invoice":
+                            document["total"] = -abs(float(document.get("total", 0)))
                         invoice = _create_invoice(
                             document, client, invoice_service)
                         new_amount = invoice.total_amount

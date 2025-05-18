@@ -73,7 +73,7 @@ class HoldedClient:
 
     async def list_documents(self, document_type: str = "invoice", page: int = 1, per_page: int = 50,
                              starttmp: int = None, endtmp: int = None, contactid: str = None,
-                             paid: int = None, billed: int = None, sort: str = None) -> Dict:
+                             paid: int = None, billed: int = None, sort: str = 'created-asc') -> Dict:
         """
         List all documents from Holded. 
         Suggest to use starttmp and endtmp to filter by date.
