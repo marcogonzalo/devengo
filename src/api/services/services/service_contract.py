@@ -112,7 +112,6 @@ class ServiceContractService:
             contract_date=first_invoice.invoice_date,
             contract_amount=first_invoice.total_amount,
             contract_currency="EUR",  # Default currency
-            accrued_amount=0.0,  # Default accrued amount
             status=ServiceContractStatus.ACTIVE  # Default status
         )
         self.db.add(contract_data)
