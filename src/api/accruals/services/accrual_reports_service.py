@@ -100,8 +100,9 @@ class AccrualReportsService:
                 "Period": period.name or "",
                 "Service": service.name,
                 "Period Status": period.status.value,
-                "Total to accrue": contract_accrual.total_amount_to_accrue,
-                "Pending to accrue": contract_accrual.remaining_amount_to_accrue,
+                "Status Change Date": period.status_change_date,
+                "Total to accrue": round(contract_accrual.total_amount_to_accrue, 2),
+                "Pending to accrue": round(contract_accrual.remaining_amount_to_accrue, 2),
                 "Period start date": period.start_date,
                 "Period end date": period.end_date,
             }
@@ -117,7 +118,7 @@ class AccrualReportsService:
 
         return {
             "headers": ["Contract start date", "Client", "Email", "Period", "Service",
-                        "Period Status", "Total to accrue", "Pending to accrue",
+                        "Period Status", "Status Change Date", "Total to accrue", "Pending to accrue",
                         "Period start date", "Period end date"] + [name for _, name in months],
             "data": csv_data,
             "months": [name for _, name in months]
