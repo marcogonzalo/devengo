@@ -20,10 +20,10 @@ class FourGeeksClient:
         self._token: Optional[str] = None
         self._client = httpx.Client()
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self, academy_id: int = 6) -> Dict[str, str]:
         headers = {
             "Content-Type": "application/json",
-            "Academy": os.getenv("4GEEKS_ACADEMY_ID"),
+            "Academy": str(academy_id),
         }
         if self._token:
             headers["Authorization"] = f"Token {self._token}"
@@ -51,16 +51,16 @@ class FourGeeksClient:
             raise HTTPException(
                 status_code=500, detail=f"Error occurred in FourGeeksClient login: {e}")
 
-    def get_student_by_email(self, email: str) -> Dict[str, Any]:
+    def get_member_by_email(self, email: str, roles: List[str] = ["student"], academy_id: Optional[int] = 6) -> Dict[str, Any]:
         """Get student information by email"""
         if not self._token:
             self.login()
 
         try:
             response = self._client.get(
-                f"{self.BASE_URL}/auth/academy/student",
-                params={"like": email},
-                headers=self._get_headers()
+                f"{self.BASE_URL}/auth/academy/member/{email}",
+                params={"roles": ",".join(roles)},
+                headers=self._get_headers(academy_id=academy_id)
             )
             response.raise_for_status()
             return response.json()
@@ -120,7 +120,7 @@ class FourGeeksClient:
             raise HTTPException(
                 status_code=500, detail=f"Error occurred in FourGeeksClient get_cohort_user: {e}")
 
-    def get_user_enrollments(self, user_id: int, params: Optional[Dict[str, Any]] = {}) -> List[Dict[str, Any]]:
+    def get_user_enrollments(self, user_id: int, params: Optional[Dict[str, Any]] = {}, academy_id: Optional[int] = 6) -> List[Dict[str, Any]]:
         """Get all cohorts for a specific user"""
         if not self._token:
             self.login()
@@ -129,7 +129,7 @@ class FourGeeksClient:
             response = self._client.get(
                 f"{self.BASE_URL}/admissions/academy/cohort/user",
                 params={"users": user_id, **params},
-                headers=self._get_headers()
+                headers=self._get_headers(academy_id=academy_id)
             )
             response.raise_for_status()
             return response.json()

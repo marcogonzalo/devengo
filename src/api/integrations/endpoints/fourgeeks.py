@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.logger import logger
 from fastapi.responses import JSONResponse
@@ -233,6 +234,9 @@ def sync_client_enrollments(
               created, updated, skipped, and failed operations.
     """
     processor = EnrollmentProcessor(period_service, client_service)
+    academy_ids = os.getenv("4GEEKS_ACADEMY_ID", "6").split(",")
+    academy_ids = [int(a.strip()) for a in academy_ids if a.strip()]
+
 
     try:
         contracts = contract_service.get_active_contracts()
@@ -249,10 +253,15 @@ def sync_client_enrollments(
                     )
                     continue
 
-                enrollments = fourgeeks_client.get_user_enrollments(
-                    user_id=fourgeeks_external_id,
-                    params={"roles": "STUDENT"}
-                )
+                enrollments = []
+                for academy_id in academy_ids:
+                    enrollments = fourgeeks_client.get_user_enrollments(
+                        user_id=fourgeeks_external_id,
+                        params={"roles": "STUDENT"},
+                        academy_id=academy_id
+                    )
+                    if len(enrollments) > 0:
+                        break
 
                 for enrollment in enrollments:
                     processor.process_enrollment(enrollment, contract.id)
@@ -290,43 +299,61 @@ def sync_students_from_clients(
               of linked clients, clients not found, and errors.
     """
     processor = StudentProcessor(client_service, fourgeeks_client)
+    academy_ids = os.getenv("4GEEKS_ACADEMY_ID", "6").split(",")
+    academy_ids = [int(a.strip()) for a in academy_ids if a.strip()]
 
     try:
-        # Consider adding pagination if the number of clients can be large
         clients_to_sync = client_service.get_clients_with_no_external_id(
             "fourgeeks")
         logger.info(
             f"Found {len(clients_to_sync)} clients without a 4Geeks external ID.")
 
-        for client in clients_to_sync:
-            linked_id, error_msg = processor.find_and_link_student(
-                client.id, client.identifier)
+        # Track which clients still need to be found after each academy_id
+        clients_remaining = [(client.id, client.identifier.lower()) for client in clients_to_sync]
+        not_found_details = []
+        error_details = []
+        linked = 0
+        errors = 0
+        not_found = 0
 
-            if linked_id:
-                processor.stats["linked"] += 1
-            elif error_msg == "not_found":
-                processor.stats["not_found"] += 1
-                processor.stats["not_found_details"].append(
-                    client.identifier)  # Log the email
-            else:
-                processor.stats["errors"] += 1
-                if error_msg:  # Avoid adding None if find_and_link_student raises unexpected error
-                    processor.stats["error_details"].append(
-                        log_student_error(error_msg))
+        for academy_id in academy_ids:
+            next_clients_remaining = []
+            for client_id, client_identifier in clients_remaining:
+                linked_id, error_msg = processor.find_and_link_student(
+                    client_id, client_identifier, academy_id=academy_id
+                )
+                if linked_id:
+                    linked += 1
+                elif error_msg == "not_found":
+                    next_clients_remaining.append((client_id, client_identifier))
+                else:
+                    errors += 1
+                    if error_msg:
+                        error_details.append(log_student_error(error_msg))
+                    next_clients_remaining.append((client_id, client_identifier))
+            clients_remaining = next_clients_remaining
+            # Only retry not found/errors in the next academy_id
+            if not clients_remaining:
+                break
+
+        if len(clients_remaining) > 0:
+            not_found += len(clients_remaining)
+            not_found_details = [client_identifier for client_id, client_identifier in clients_remaining]
 
         logger.info(
-            f"Sync completed. Linked: {processor.stats['linked']}, Not Found: {processor.stats['not_found']}, Errors: {processor.stats['errors']}")
+            f"Sync completed. Linked: {linked}, Not Found: {not_found}, Errors: {errors}")
 
         response = {
-            # Indicate overall success based on errors
             "success": True,
-            **processor.stats
+            "linked": linked,
+            "not_found": not_found,
+            "not_found_details": not_found_details,
+            "errors": errors,
+            "error_details": error_details
         }
         return response
 
     except Exception as e:
-        # Catch unexpected errors during the overall process (e.g., DB connection)
-        # Use logger.exception to include traceback
         logger.exception("Critical error during sync_students_from_clients")
         raise HTTPException(
             status_code=500,

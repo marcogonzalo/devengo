@@ -172,7 +172,8 @@ class StudentProcessor:
 
     def find_and_link_student(self,
                               client_id: int,
-                              client_identifier: str
+                              client_identifier: str,
+                              academy_id: int = 6
                               ) -> tuple[Optional[str], Optional[str]]:
         """
         Finds a student in 4Geeks by client's email and links their external ID.
@@ -181,6 +182,7 @@ class StudentProcessor:
             client: The local client object.
             client_service: Service for client operations.
             fourgeeks_client: Client for interacting with 4Geeks API.
+            academy_id: The academy ID to use for the search.
 
         Returns:
             A tuple containing:
@@ -188,8 +190,11 @@ class StudentProcessor:
             - An error message (str) if an error occurred, None otherwise.
         """
         try:
-            students_response = self.fourgeeks_client.get_student_by_email(
-                email=client_identifier)
+            students_response = self.fourgeeks_client.get_member_by_email(
+                email=client_identifier,
+                roles=["student", "assistant"],
+                academy_id=academy_id
+            )
 
             if not students_response:
                 logger.warning(
@@ -204,7 +209,13 @@ class StudentProcessor:
                     f"Could not determine a unique 4Geeks student client {client_id} identifier")
                 return None, "not_found"
 
-            student_user_id = student.get("user", {}).get("id")
+            # TODO: Consider status INVITED as another case
+            try:
+                student_user_id = student.get("user", {}).get("id")
+            except Exception as e:
+                raise Exception(
+                    f"4Geeks student data has not user attribute")
+
             if not student_user_id:
                 logger.error(
                     f"4Geeks student data missing user ID for client {client_id} - Data: {student}")
