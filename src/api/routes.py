@@ -9,19 +9,24 @@ from src.api.accruals.endpoints.accrued_period import router as accrual_router
 from src.api.accruals.endpoints.accruals import router as accruals_router
 from src.api.integrations.endpoints.holded import router as holded_router
 from src.api.integrations.endpoints.fourgeeks import router as fourgeeks_router
+from src.api.integrations.endpoints.notion import router as notion_router
 
 api_router = APIRouter()
 
 # Include all domain routers
 api_router.include_router(invoice_router)
 api_router.include_router(client_router)
-api_router.include_router(holded_router)
-api_router.include_router(fourgeeks_router)
 api_router.include_router(service_router)
 api_router.include_router(service_period_router)
 api_router.include_router(service_contract_router)
 api_router.include_router(accrual_router)
 api_router.include_router(accruals_router)
+
+# integrations
+api_router.include_router(holded_router)
+api_router.include_router(fourgeeks_router)
+api_router.include_router(notion_router)
+
 
 @api_router.route('/hello', methods=['POST', 'GET'])
 def handle_hello(request: Request):
