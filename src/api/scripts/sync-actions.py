@@ -5,6 +5,7 @@ Bulk synchronization script that performs a series of API calls in sequence:
 2. Import Invoices and Clients from Invoicing System
 3. Retrieve Clients data from CRM (for each month in 2024)
 4. Generate Service Periods from CRM
+5. Perform accruals for each month in 2024
 """
 
 import os
@@ -46,6 +47,7 @@ STEP_NAMES = [
     "invoices",
     "crm-clients",
     "service-periods",
+    "accruals",
 ]
 
 
@@ -114,6 +116,30 @@ async def generate_service_periods_from_crm(client):
     return service_periods_result
 
 
+async def perform_accruals(client):
+    """Step 5: Perform accruals for each month in 2024"""
+    logger.info("Step 5: Performing accruals for each month in 2024")
+    for i in range(len(MONTHLY_TIMESTAMPS) - 1):
+        start_timestamp = MONTHLY_TIMESTAMPS[i]
+        accrual_date = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
+        logger.info(f"Processing accruals for month starting: {accrual_date}")
+        # The accruals endpoint expects a JSON body with 'period_start_date'
+        try:
+            response = await client.post(
+                f"{BASE_URL}/accruals/accrue-period",
+                json={"period_start_date": accrual_date}
+            )
+            response.raise_for_status()
+            result = response.json()
+            logger.info(f"Accruals for {accrual_date} completed: {result}")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error occurred during accruals: {e}")
+            logger.error(f"Response content: {e.response.text}")
+        except Exception as e:
+            logger.error(f"An error occurred during accruals: {e}")
+    logger.info("Accruals for all months in 2024 completed.")
+
+
 async def main(from_step: str = None):
     """Execute all synchronization steps in sequence, optionally starting from a specific step."""
     STEP_FUNCTIONS = [
@@ -125,12 +151,16 @@ async def main(from_step: str = None):
     async with httpx.AsyncClient(timeout=300.0) as client:
         start_index = 0
         if from_step:
+            if from_step == "accruals":
+                await perform_accruals(client)
+                return
             try:
                 start_index = STEP_NAMES.index(from_step)
             except ValueError:
                 logger.error(
                     f"Unknown step: {from_step}. Valid steps are: {', '.join(STEP_NAMES)}")
                 return
+
         for func in STEP_FUNCTIONS[start_index:]:
             await func(client)
         logger.info("All synchronization steps completed successfully")
