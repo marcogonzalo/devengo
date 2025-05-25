@@ -59,6 +59,9 @@ def _create_client(contact, client_service):
     client_service.add_external_id(client.id, external_id_data)
     return client
 
+def _is_credit_note(document):
+    return document.get("docNumber").startswith("CN") and document.get("from", {}).get("docType", "") == "invoice"
+
 
 async def _get_or_create_client(contact_id, client_service, holded_client):
     client = client_service.get_client_by_external_id(
@@ -245,7 +248,8 @@ async def sync_invoices_and_clients(
                 new_amount = 0
                 if not invoice:
                     try:
-                        if document.get("from", {}).get("docType") == "invoice":
+                        # If the document is a credit note, we need to negate the total amount
+                        if _is_credit_note(document):
                             document["total"] = -abs(float(document.get("total", 0)))
                         invoice = _create_invoice(
                             document, client, invoice_service)
