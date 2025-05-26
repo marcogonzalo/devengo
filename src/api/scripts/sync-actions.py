@@ -47,7 +47,7 @@ STEP_NAMES = [
     "invoices",
     "crm-clients",
     "service-periods",
-    "accruals",
+    "notion-external-id",
 ]
 
 
@@ -116,12 +116,23 @@ async def generate_service_periods_from_crm(client):
     return service_periods_result
 
 
+async def retrieve_notion_external_id_for_clients(client):
+    """Step 5: Sync with Notion"""
+    logger.info("Step 5: Syncing with Notion")
+    notion_result = await make_api_call(
+        client, f"{BASE_URL}/integrations/notion/sync-page-ids-from-clients"
+    )
+    logger.info(f"Notion sync completed: {notion_result}")
+    return notion_result
+
+
 async def perform_accruals(client):
     """Step 5: Perform accruals for each month in 2024"""
     logger.info("Step 5: Performing accruals for each month in 2024")
     for i in range(len(MONTHLY_TIMESTAMPS) - 1):
         start_timestamp = MONTHLY_TIMESTAMPS[i]
-        accrual_date = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
+        accrual_date = datetime.fromtimestamp(
+            start_timestamp).strftime('%Y-%m-%d')
         logger.info(f"Processing accruals for month starting: {accrual_date}")
         # The accruals endpoint expects a JSON body with 'period_start_date'
         try:
@@ -147,6 +158,7 @@ async def main(from_step: str = None):
         import_invoices_and_clients_from_invoicing_system,
         retrieve_clients_data_from_crm,
         generate_service_periods_from_crm,
+        retrieve_notion_external_id_for_clients,
     ]
     async with httpx.AsyncClient(timeout=300.0) as client:
         start_index = 0

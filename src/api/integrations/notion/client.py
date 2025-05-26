@@ -101,3 +101,17 @@ class NotionClient:
             logging.info(
                 f"Fetched {len(all_results)} pages, has more: {has_more}, next cursor: {next_cursor}")
             return all_results
+
+    async def get_page_content(self, page_id: str):
+        """
+        Fetch the content/properties of a Notion page by its ID.
+        """
+        url = f"{self.base_url}/pages/{page_id}"
+        try:
+            response = await self._client.get(url, headers=self.headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=500, detail=f"HTTP error: {e}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error: {e}")

@@ -66,6 +66,7 @@ class ProcessPeriodResponse(BaseModel):
     successful_accruals: int
     failed_accruals: int
     existing_accruals: int
+    skipped_accruals: int
     results: List[ContractProcessingResult]
 
 

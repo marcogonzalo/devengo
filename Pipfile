@@ -16,3 +16,6 @@ debugpy = "*"
 
 [requires]
 python_version = "3.13"
+
+[scripts]
+sync-actions = "python src/api/scripts/sync-actions.py"

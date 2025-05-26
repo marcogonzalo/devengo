@@ -1,11 +1,13 @@
 import calendar
 from fastapi.logger import logger
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import List, Tuple, TYPE_CHECKING
 from sqlalchemy.orm import Session, joinedload
 from sqlmodel import func, or_, and_
+from api.integrations.notion.client import NotionClient
+from api.integrations.notion.config import NotionConfig
 from src.api.accruals.constants.accruals import ContractAccrualStatus
-from src.api.common.constants.services import ServiceContractStatus, ServicePeriodStatus
+from src.api.common.constants.services import ServiceContractStatus, ServicePeriodStatus, map_educational_status
 from src.api.accruals.models import AccruedPeriod, ContractAccrual
 from src.api.accruals.schemas import (
     AccruedPeriodCreate,
@@ -152,14 +154,14 @@ class PeriodProcessor:
         return total_accrued_amount, total_accrued_sessions
 
     def _get_contract_accrual(self, contract: "ServiceContract") -> ContractAccrual:
-        accrual = contract.contract_accrual
-        if not accrual:
+        contract_accrual = contract.contract_accrual
+        if not contract_accrual:
             # Create ContractAccrual if it does not exist
             if not contract.service:
                 raise ValueError(
                     f"No Service found for id={contract.id}")
             total_sessions = contract.service.total_sessions
-            accrual = ContractAccrual(
+            contract_accrual = ContractAccrual(
                 contract_id=contract.id,
                 total_amount_to_accrue=contract.contract_amount,
                 remaining_amount_to_accrue=contract.contract_amount,
@@ -168,10 +170,10 @@ class PeriodProcessor:
                 sessions_remaining_to_accrue=total_sessions,
                 accrual_status="ACTIVE"
             )
-            self.db.add(accrual)
+            self.db.add(contract_accrual)
             self.db.commit()
-            self.db.refresh(accrual)
-        return accrual
+            self.db.refresh(contract_accrual)
+        return contract_accrual
 
     def _get_sessions_and_amount_remaining(self, contract_accrual: ContractAccrual, total_accrued_sessions: int, total_accrued_amount: float) -> Tuple[int, float]:
         """
@@ -209,6 +211,137 @@ class PeriodProcessor:
 
         # Return a list of service period IDs that already have accruals for this month
         return [result[0] for result in results]  # Return only contract_id
+
+    def _get_contracts_with_no_service_periods(self):
+        """
+        Get all active service contracts with no service periods.
+        """
+        from src.api.services.models import ServiceContract
+
+        # Find all active contracts with no service periods
+        return (
+            self.db.query(ServiceContract)
+            .options(joinedload(ServiceContract.client), joinedload(ServiceContract.contract_accrual))
+            .filter(ServiceContract.status == ServiceContractStatus.ACTIVE)
+            # Filter contracts with no service periods
+            .filter(~ServiceContract.periods.any())
+            .all()
+        )
+
+    def _accrue_contracts_with_no_service_periods_if_ended(self, contracts_without_periods: List["ServiceContract"], target_month_start: date):
+        """
+        For active service contracts with no service periods, check Notion for Educational status and Drop date.
+        If status is Early dropped, Dropped, or Suspended and drop date is in this or previous month,
+        mark contract as completed and accrue fully.
+        """
+        import asyncio
+        from src.api.accruals.constants.accruals import ContractAccrualStatus
+        from src.api.services.models import ServiceContract
+
+        results = []
+        month_start, month_end = get_month_range(
+            target_month_start.year, target_month_start.month)
+        for contract in contracts_without_periods:
+            # Double check that contract has no periods
+            if contract.periods:
+                continue
+            client = contract.client
+            # Get Notion page ID from client's external ID
+            notion_external_id = client.get_external_id("notion")
+            if not notion_external_id:
+                results.append({
+                    "contract_id": contract.id,
+                    "status": "SKIPPED",
+                    "message": f"No Notion external ID found for client {client.id}"
+                })
+                continue
+            # Fetch the page properties
+            try:
+                notion_config = NotionConfig()
+                notion_client = NotionClient(notion_config)
+                page = asyncio.run(
+                    notion_client.get_page_content(notion_external_id))
+            except Exception as e:
+                results.append({
+                    "contract_id": contract.id,
+                    "status": "FAILED",
+                    "message": f"Failed to fetch Notion page for client {client.identifier}: {str(e)}"
+                })
+                continue
+            props = page.get("properties", {})
+            # Adjust these property names as needed
+            status_prop = props.get("Educational Status", {})
+            status_date_value = None
+            status_value = None
+            status_value_matches = False
+            # Parse status
+            if status_prop.get("select"):
+                status_value = status_prop.get("select", {}).get("name")
+                status_value = map_educational_status(
+                    "_".join(status_value.upper().split()))
+
+            # Parse drop date
+            if status_value == ServicePeriodStatus.DROPPED:
+                status_value_matches = True
+                drop_date_prop = props.get("Drop Date ", {})
+                if drop_date_prop.get("date"):
+                    status_date_value = drop_date_prop.get(
+                        "date", {}).get("start")
+            elif status_value == ServicePeriodStatus.ENDED:
+                status_value_matches = True
+                end_date_prop = props.get("Certificated At", {})
+                if end_date_prop.get("date"):
+                    status_date_value = end_date_prop.get(
+                        "date", {}).get("start")
+
+            # Check status and drop date
+            if status_value_matches and status_date_value:
+                status_date = datetime.strptime(
+                    status_date_value, "%Y-%m-%d").date()
+                if status_date <= month_end:
+                    # Mark contract as completed and accrue fully
+                    contract_accrual = self._get_contract_accrual(contract)
+                    contract.status = ServiceContractStatus.CLOSED
+                    if contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED:
+                        # Accrue the full remaining amount
+                        accrued_amount = contract_accrual.remaining_amount_to_accrue
+                        contract_accrual.total_amount_accrued += accrued_amount
+                        contract_accrual.remaining_amount_to_accrue = 0.0
+                        contract_accrual.total_sessions_to_accrue = 0
+                        contract_accrual.total_sessions_accrued = 0
+                        contract_accrual.sessions_remaining_to_accrue = 0
+                        contract_accrual.accrual_status = ContractAccrualStatus.COMPLETED
+                        # Create an AccruedPeriod record
+                        accrued_period = AccruedPeriod(
+                            contract_accrual_id=contract_accrual.id,
+                            service_period_id=None,
+                            accrual_date=month_start,
+                            accrued_amount=accrued_amount,
+                            accrual_portion=1.0,
+                            status=ServicePeriodStatus.ENDED,
+                            sessions_in_period=0,
+                            total_contract_amount=contract.contract_amount,
+                            status_change_date=status_date
+                        )
+                        self.db.add(contract_accrual)
+                        self.db.add(accrued_period)
+                    self.db.add(contract)
+                    self.db.commit()
+                    self.db.refresh(contract)
+                    self.db.refresh(contract_accrual)
+                    self.db.refresh(accrued_period)
+                    results.append({
+                        "contract_id": contract.id,
+                        "status": "COMPLETED",
+                        "message": f"Contract marked as completed and fully accrued due to Notion status {status_value} and drop date {status_date_value}"
+                    })
+                    continue
+            results.append({
+                "contract_id": contract.id,
+                "status": "SKIPPED",
+                "message": f"No action needed for contract (status: {status_value}, drop date: {status_date_value})"
+            })
+        return results
 
     def get_service_periods_in_month(self, target_month_start: date) -> List["ServicePeriod"]:
         """Get all service periods active or changing status within the given month."""
@@ -267,7 +400,6 @@ class PeriodProcessor:
                 status=ProcessingStatus.FAILED,
                 message=f"Error generating ContractAccrual for contract {contract.id}: {str(e)}"
             )
-        
 
         # Check if the accrual is completed
         if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
@@ -282,13 +414,15 @@ class PeriodProcessor:
             # restore the total sessions to accrue to the new total sessions accrued after the pause
             sessions_to_accrue = service_period.get_sessions_between(
                 max(service_period.start_date, target_month_start), service_period.end_date)
-            contract_accrual.total_sessions_to_accrue = contract_accrual.total_sessions_accrued + sessions_to_accrue
-            contract_accrual.sessions_remaining_to_accrue = contract_accrual.total_sessions_to_accrue - contract_accrual.total_sessions_accrued
+            contract_accrual.total_sessions_to_accrue = contract_accrual.total_sessions_accrued + \
+                sessions_to_accrue
+            contract_accrual.sessions_remaining_to_accrue = contract_accrual.total_sessions_to_accrue - \
+                contract_accrual.total_sessions_accrued
             contract_accrual.accrual_status = ContractAccrualStatus.ACTIVE
             self.db.add(contract_accrual)
             self.db.commit()
             self.db.refresh(contract_accrual)
-        
+
         # Calculate standard accrual for the overlapping period/month
         amount_to_accrue, portion_to_accrue, sessions_in_month = self._calculate_accrual_for_period(
             service_period, target_month_start, contract_accrual
@@ -389,3 +523,44 @@ class PeriodProcessor:
             status=ProcessingStatus.SUCCESS,
             accrued_period=accrued_period  # Pass the created object
         )
+
+    def process_contracts_with_no_service_periods(self, target_month_start: date):
+        """
+        Process contracts with no service periods, returning results and updated counters.
+        """
+        from src.api.accruals.models import AccruedPeriod
+        from src.api.accruals.schemas import AccruedPeriodResponse, ContractProcessingResult, ProcessingStatus
+
+        # Get all active contracts with no service periods
+        contracts = self._get_contracts_with_no_service_periods()
+
+        no_period_results = self._accrue_contracts_with_no_service_periods_if_ended(
+            contracts, target_month_start)
+        results = []
+        successful = 0
+        failed = 0
+        skipped = 0
+        for r in no_period_results:
+            accrued_period = None
+            if r["status"] == "COMPLETED":
+                accrued = self.db.query(AccruedPeriod).filter(
+                    AccruedPeriod.contract_accrual_id == r["contract_id"],
+                    AccruedPeriod.service_period_id == None,
+                    AccruedPeriod.accrual_date == target_month_start
+                ).first()
+                if accrued:
+                    accrued_period = AccruedPeriodResponse.model_validate(
+                        accrued)
+                successful += 1
+            elif r["status"] == "FAILED":
+                failed += 1
+            else:
+                skipped += 1
+            results.append(ContractProcessingResult(
+                contract_id=r["contract_id"],
+                service_period_id=None,
+                status=ProcessingStatus.SUCCESS if r["status"] == "COMPLETED" else ProcessingStatus.PARTIAL,
+                message=r["message"],
+                accrued_period=accrued_period
+            ))
+        return results, successful, failed, skipped

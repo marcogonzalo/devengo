@@ -4,8 +4,9 @@ from sqlalchemy.orm import Session
 
 from src.api.accruals.services.accrual_reports_service import AccrualReportsService
 from src.api.common.utils.database import get_db
-from src.api.accruals.schemas import ProcessPeriodRequest, ProcessPeriodResponse, ProcessingStatus
+from src.api.accruals.schemas import ProcessPeriodRequest, ProcessPeriodResponse, ProcessingStatus, ContractProcessingResult, AccruedPeriodResponse
 from src.api.accruals.services.period_processor import PeriodProcessor
+from src.api.integrations.notion import NotionClient, NotionConfig
 
 router = APIRouter(prefix="/accruals", tags=["accruals"])
 
@@ -22,8 +23,17 @@ def process_accruals_in_month(
     1. Find all ServicePeriods overlapping with the target month.
     2. Calculate and create AccruedPeriod records for each relevant ServicePeriod.
     3. Handle special contract statuses like DROPPED during calculation.
+    4. Handle active contracts with no service periods (Notion check).
     """
     processor = PeriodProcessor(db)
+
+    # Process each service period
+    results = []
+    total_processed = 0
+    successful = 0
+    existing = 0
+    skipped = 0
+    failed = 0
 
     # Get all relevant service periods for the month
     service_periods = processor.get_service_periods_in_month(
@@ -33,15 +43,10 @@ def process_accruals_in_month(
     contract_ids_with_accruals = processor.get_contract_ids_with_accruals_in_month(
         request.period_start_date)
 
-    # Process each service period
-    results = []
     total_processed = len(service_periods)
-    successful = 0
-    skipped = 0
-    failed = 0
     existing = len(contract_ids_with_accruals)
 
-    #  Exclude periods that already have an accrual
+    #  Exclude periods that already have an accrual
     service_periods = [
         period for period in service_periods
         if period.contract.id not in contract_ids_with_accruals
@@ -59,6 +64,15 @@ def process_accruals_in_month(
                 skipped += 1
             elif result.status == ProcessingStatus.FAILED:
                 failed += 1
+    
+    # --- Handle contracts with no service periods ---
+    no_period_results, no_period_successful, no_period_failed, no_period_skipped = processor.process_contracts_with_no_service_periods(
+        request.period_start_date)
+    results.extend(no_period_results)
+    total_processed += len(no_period_results)
+    successful += no_period_successful
+    failed += no_period_failed
+    skipped += no_period_skipped
 
     return ProcessPeriodResponse(
         period_start_date=request.period_start_date,
