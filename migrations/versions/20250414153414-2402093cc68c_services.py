@@ -35,7 +35,7 @@ def drop_enum(name: str):
 
 # Define the enum types
 service_contract_status_enum = "servicecontractstatus"
-service_contract_status_enum_values = ['ACTIVE', 'CANCELED']
+service_contract_status_enum_values = ['ACTIVE', 'CANCELED', 'CLOSED']
 
 service_period_status_enum = "serviceperiodstatus"
 service_period_status_enum_values = ['ACTIVE', 'POSTPONED', 'DROPPED', 'ENDED']

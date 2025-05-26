@@ -4,22 +4,11 @@ from fastapi.logger import logger
 from src.api.clients.schemas.client import ClientExternalIdCreate
 from src.api.integrations.fourgeeks.client import FourGeeksClient
 from src.api.integrations.fourgeeks.log_error import log_enrollment_error
-from api.common.constants.services import ServicePeriodStatus
+from api.common.constants.services import ServicePeriodStatus, map_educational_status
 from src.api.clients.services.client_service import ClientService
 from src.api.services.services.service_period_service import ServicePeriodService
 from src.api.services.schemas.service_period import ServicePeriodCreate
 from src.api.common.utils.datetime import get_date
-
-
-def map_educational_status(status: str) -> ServicePeriodStatus:
-    status_mapping = {
-        "ACTIVE": ServicePeriodStatus.ACTIVE,
-        "DROPPED": ServicePeriodStatus.DROPPED,
-        "GRADUATED": ServicePeriodStatus.ENDED,
-        "NOT_COMPLETING": ServicePeriodStatus.ENDED,
-        "POSTPONED": ServicePeriodStatus.POSTPONED,
-    }
-    return status_mapping.get(status, ServicePeriodStatus.ACTIVE)
 
 
 def _adjust_start_date_to_service(start_date_str: str | None, cohort_slug: str) -> Optional[date]:

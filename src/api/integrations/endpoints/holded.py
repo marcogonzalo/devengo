@@ -113,7 +113,7 @@ def _get_service_from_products(products, service_service: ServiceService) -> Ser
     return service
 
 
-@router.route('/test-holded', methods=['GET'])
+@router.route('/test', methods=['GET'])
 async def test_holded_integration(request: Request):
     """
     Test endpoint to verify Holded API integration is working correctly.

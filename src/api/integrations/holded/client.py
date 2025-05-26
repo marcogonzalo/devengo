@@ -12,6 +12,7 @@ class HoldedClient:
             "key": config.api_key,
             "Content-Type": "application/json"
         }
+        self._client = httpx.AsyncClient()
 
     async def list_contacts(self, page: int = 1, per_page: int = 50) -> Dict:
         """
@@ -54,13 +55,12 @@ class HoldedClient:
             Dict containing the contact data
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.config.base_url}/contacts/{contact_id}",
-                    headers=self.headers
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.get(
+                f"{self.config.base_url}/contacts/{contact_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             logging.error(
                 f"HTTP error occurred in HoldedClient get_contact: {e}")
@@ -166,14 +166,13 @@ class HoldedClient:
         params = {k: v for k, v in params.items() if v is not None}
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.config.base_url}/documents/{document_type}",
-                    headers=self.headers,
-                    params=params
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.get(
+                f"{self.config.base_url}/documents/{document_type}",
+                headers=self.headers,
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             logging.error(
                 f"HTTP error occurred in HoldedClient list_documents: {e}")
@@ -196,13 +195,12 @@ class HoldedClient:
             Dict containing the document data
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.config.base_url}/documents/{document_id}",
-                    headers=self.headers
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.get(
+                f"{self.config.base_url}/documents/{document_id}",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             logging.error(
                 f"HTTP error occurred in HoldedClient get_document: {e}")
@@ -221,13 +219,12 @@ class HoldedClient:
             Dict containing the expenses accounts data
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.config.base_url}/saleschannels",
-                    headers=self.headers
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.get(
+                f"{self.config.base_url}/saleschannels",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             logging.error(
                 f"HTTP error occurred in HoldedClient list_income_accounts: {e}")
@@ -247,19 +244,19 @@ class HoldedClient:
             Dict containing the expenses accounts data
         """
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{self.config.base_url}/expensesaccounts",
-                    headers=self.headers
-                )
-                response.raise_for_status()
-                return response.json()
+            response = await self._client.get(
+                f"{self.config.base_url}/expensesaccounts",
+                headers=self.headers
+            )
+            response.raise_for_status()
+            return response.json()
         except httpx.HTTPStatusError as e:
             logging.error(
                 f"HTTP error occurred in HoldedClient list_expenses_accounts: {e}")
             raise HTTPException(
                 status_code=500, detail=f"HTTP error occurred in HoldedClient list_expenses_accounts: {e}")
         except Exception as e:
-            logging.error(f"Error occurred in HoldedClient list_expenses_accounts: {e}")
+            logging.error(
+                f"Error occurred in HoldedClient list_expenses_accounts: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error occurred in HoldedClient list_expenses_accounts: {e}")

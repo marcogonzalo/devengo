@@ -29,3 +29,17 @@ service_contract_status_enum = ENUM(
     name='servicecontractstatus',
     create_type=False  # Important: let migrations handle type creation
 )
+
+
+def map_educational_status(status: str) -> ServicePeriodStatus:
+    status_mapping = {
+        "ACTIVE": ServicePeriodStatus.ACTIVE,
+        "DROPPED": ServicePeriodStatus.DROPPED,
+        "GRADUATED": ServicePeriodStatus.ENDED,
+        "NOT_COMPLETING": ServicePeriodStatus.ENDED,
+        "POSTPONED": ServicePeriodStatus.POSTPONED,
+        "EARLY_POSTPONED": ServicePeriodStatus.POSTPONED,
+        "EARLY_DROPPED": ServicePeriodStatus.DROPPED,
+        "SUSPENDED": ServicePeriodStatus.DROPPED,
+    }
+    return status_mapping.get(status, ServicePeriodStatus.ACTIVE)
