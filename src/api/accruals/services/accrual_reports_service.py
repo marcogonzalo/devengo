@@ -1,12 +1,10 @@
 from datetime import date
-from typing import Dict, Any, List
+from typing import Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import extract
 from collections import defaultdict
 import csv
 from io import StringIO
 
-from src.api.common.constants.services import ServicePeriodStatus
 from src.api.accruals.models.accrued_period import AccruedPeriod
 from src.api.accruals.models.contract_accrual import ContractAccrual
 from src.api.services.models.service_contract import ServiceContract
@@ -31,6 +29,18 @@ class AccrualReportsService:
             Dict containing service period data and accrual amounts by month
         """
         # Step 1: Get all service contracts with their related entities
+        # Include contracts without service periods but that have accruals in the date range
+        
+        # First, get contract accrual IDs that have been accrued in the date range
+        accrued_contract_ids_subquery = (
+            self.db.query(AccruedPeriod.contract_accrual_id)
+            .filter(
+                AccruedPeriod.accrual_date >= start_date,
+                AccruedPeriod.accrual_date <= end_date
+            )
+            .distinct()
+        )
+        
         query = (
             self.db.query(
                 ServiceContract,
@@ -41,15 +51,20 @@ class AccrualReportsService:
             )
             .join(ServiceContract.client)
             .join(ServiceContract.service)
-            .join(ServiceContract.periods)
+            .outerjoin(ServiceContract.periods)  # Left join to include contracts without periods
             .join(ServiceContract.contract_accrual)
             .filter(
-                ServicePeriod.start_date <= end_date,
-                ServicePeriod.end_date >= start_date
+                # Include if period exists and overlaps with date range
+                # OR if contract has accruals in the date range (even without periods)
+                # (
+                #     (ServicePeriod.start_date <= end_date) &
+                #     (ServicePeriod.end_date >= start_date)
+                # ) |
+                (ContractAccrual.id.in_(accrued_contract_ids_subquery))
             )
             .order_by(
+                ServicePeriod.start_date.asc().nulls_last(),  # Handle null periods
                 ServiceContract.contract_date,
-                ServicePeriod.start_date,
                 Client.name,
             )
         )
@@ -84,6 +99,7 @@ class AccrualReportsService:
             current_date = date(year, month, 1)
 
         # Organize accruals by contract_accrual_id, service_period_id, and month
+        # service_period_id can be None for accruals without associated periods
         for accrual in accruals:
             month_key = f"{accrual.accrual_date.year}-{accrual.accrual_date.month:02d}"
             key = (accrual.contract_accrual_id, accrual.service_period_id)
@@ -97,18 +113,20 @@ class AccrualReportsService:
                 "Contract start date": contract.contract_date,
                 "Client": client.name,
                 "Email": client.identifier,
-                "Period": period.name or "",
+                "Period": period.name if period else "No Period",
                 "Service": service.name,
-                "Period Status": period.status.value,
-                "Status Change Date": period.status_change_date,
+                "Period Status": period.status.value if period else "N/A",
+                "Status Change Date": period.status_change_date if period else None,
                 "Total to accrue": round(contract_accrual.total_amount_to_accrue, 2),
                 "Pending to accrue": round(contract_accrual.remaining_amount_to_accrue, 2),
-                "Period start date": period.start_date,
-                "Period end date": period.end_date,
+                "Period start date": period.start_date if period else None,
+                "Period end date": period.end_date if period else None,
             }
 
             # Add monthly accrual amounts
-            key = (contract_accrual.id, period.id)
+            # For contracts without periods, use None as service_period_id
+            period_id = period.id if period else None
+            key = (contract_accrual.id, period_id)
             period_accruals = accruals_by_contract_period.get(key, {})
 
             for month_key, month_name in months:
