@@ -1,6 +1,7 @@
 from datetime import date
 from typing import Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import case
 from collections import defaultdict
 import csv
 from io import StringIO
@@ -54,18 +55,39 @@ class AccrualReportsService:
             .outerjoin(ServiceContract.periods)  # Left join to include contracts without periods
             .join(ServiceContract.contract_accrual)
             .filter(
-                # Include if period exists and overlaps with date range
-                # OR if contract has accruals in the date range (even without periods)
-                # (
-                #     (ServicePeriod.start_date <= end_date) &
-                #     (ServicePeriod.end_date >= start_date)
-                # ) |
-                (ContractAccrual.id.in_(accrued_contract_ids_subquery))
+                # Include if:
+                # 1. Period exists and overlaps with date range, OR
+                # 2. Contract has accruals in the date range (even without periods), OR
+                # 3. Contract started within the specified period
+                (
+                    (ServicePeriod.start_date <= end_date) &
+                    (ServicePeriod.end_date >= start_date)
+                ) |
+                (ContractAccrual.id.in_(accrued_contract_ids_subquery)) |
+                (
+                    (ServiceContract.contract_date >= start_date) &
+                    (ServiceContract.contract_date <= end_date)
+                )
             )
             .order_by(
-                ServicePeriod.start_date.asc().nulls_last(),  # Handle null periods
-                ServiceContract.contract_date,
+                # Group by accrual and period status:
+                # 1. Cases with accrual but no service period
+                # 2. Cases with accrual and periods  
+                # 3. Cases not accrued in the period
+                case(
+                        (
+                            # (ServicePeriod.id.is_(None)) & 
+                            (ContractAccrual.id.in_(accrued_contract_ids_subquery)), 1
+                        ),
+                #     (
+                #         (ServicePeriod.id.isnot(None)) & 
+                #         (ContractAccrual.id.in_(accrued_contract_ids_subquery)), 2
+                #     ),
+                    else_=2
+                ),
                 Client.name,
+                ServiceContract.contract_date,
+                ServicePeriod.start_date.asc().nulls_first(),  # Handle null periods
             )
         )
 
@@ -113,8 +135,9 @@ class AccrualReportsService:
                 "Contract start date": contract.contract_date,
                 "Client": client.name,
                 "Email": client.identifier,
-                "Period": period.name if period else "No Period",
+                "Contract Status": contract.status.value,
                 "Service": service.name,
+                "Period": period.name if period else "No Period",
                 "Period Status": period.status.value if period else "N/A",
                 "Status Change Date": period.status_change_date if period else None,
                 "Total to accrue": round(contract_accrual.total_amount_to_accrue, 2),
@@ -135,7 +158,7 @@ class AccrualReportsService:
             csv_data.append(row)
 
         return {
-            "headers": ["Contract start date", "Client", "Email", "Period", "Service",
+            "headers": ["Contract start date", "Client", "Email", "Contract Status", "Service", "Period",
                         "Period Status", "Status Change Date", "Total to accrue", "Pending to accrue",
                         "Period start date", "Period end date"] + [name for _, name in months],
             "data": csv_data,

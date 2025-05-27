@@ -242,9 +242,13 @@ class PeriodProcessor:
         month_start, month_end = get_month_range(
             target_month_start.year, target_month_start.month)
         for contract in contracts_without_periods:
-            # Double check that contract has no periods
+            # Skip if contract has periods or accrual is completed
             if contract.periods:
                 continue
+            contract_accrual = self._get_contract_accrual(contract)
+            if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
+                continue
+            
             client = contract.client
             # Get Notion page ID from client's external ID
             notion_external_id = client.get_external_id("notion")
@@ -262,12 +266,18 @@ class PeriodProcessor:
                 page = asyncio.run(
                     notion_client.get_page_content(notion_external_id))
             except Exception as e:
-                results.append({
-                    "contract_id": contract.id,
-                    "status": "FAILED",
-                    "message": f"Failed to fetch Notion page for client {client.identifier}: {str(e)}"
-                })
-                continue
+                page = None
+            
+            if not page:
+                try:
+                    page = asyncio.run(notion_client.get_page_by_email(database_id=notion_config.database_id, property_name="Email", value=client.identifier))
+                except Exception as e:
+                    results.append({
+                        "contract_id": contract.id,
+                        "status": "FAILED",
+                        "message": f"Failed to fetch Notion page for client {client.identifier}: {str(e)}"
+                    })
+                    continue
             props = page.get("properties", {})
             # Adjust these property names as needed
             status_prop = props.get("Educational Status", {})
@@ -300,7 +310,6 @@ class PeriodProcessor:
                     status_date_value, "%Y-%m-%d").date()
                 if status_date <= month_end:
                     # Mark contract as completed and accrue fully
-                    contract_accrual = self._get_contract_accrual(contract)
                     contract.status = ServiceContractStatus.CLOSED
                     if contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED:
                         # Accrue the full remaining amount
