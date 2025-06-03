@@ -55,6 +55,33 @@ class NotionClient:
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error: {e}")
 
+    async def get_page_by_email(self, database_id: str, property_name: str, value: str):
+        url = f"{self.base_url}/databases/{database_id}/query"
+        # Infer property type
+        if property_name.lower() == "email" or property_name.lower() == "e-mail" or property_name.lower().startswith("correo"):
+            filter_payload = {
+                "property": property_name,
+                "email": {"equals": value}
+            }
+        else:
+            filter_payload = {
+                "property": property_name,
+                "rich_text": {"equals": value}
+            }
+        payload = {"filter": filter_payload}
+        try:
+            response = await self._client.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+            results = data.get("results", [])
+            if not results:
+                return None
+            return results[0]
+        except httpx.HTTPStatusError as e:
+            raise HTTPException(status_code=500, detail=f"HTTP error: {e}")
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error: {e}")
+
     async def list_pages(self, database_id: str, on_or_after: str = None, date_property: str = "Created", sort_by: str = None, sort_direction: str = "descending"):
         """
         List all pages in a Notion database, returning their properties and IDs.

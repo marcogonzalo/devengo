@@ -5,7 +5,7 @@ from src.api.invoices.endpoints.invoice import router as invoice_router
 from src.api.services.endpoints.service import router as service_router
 from src.api.services.endpoints.service_period import router as service_period_router
 from src.api.services.endpoints.service_contract import router as service_contract_router
-from src.api.accruals.endpoints.accrued_period import router as accrual_router
+
 from src.api.accruals.endpoints.accruals import router as accruals_router
 from src.api.integrations.endpoints.holded import router as holded_router
 from src.api.integrations.endpoints.fourgeeks import router as fourgeeks_router
@@ -19,7 +19,6 @@ api_router.include_router(client_router)
 api_router.include_router(service_router)
 api_router.include_router(service_period_router)
 api_router.include_router(service_contract_router)
-api_router.include_router(accrual_router)
 api_router.include_router(accruals_router)
 
 # integrations

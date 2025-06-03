@@ -6,7 +6,6 @@ from collections import defaultdict
 import csv
 from io import StringIO
 
-from api.common.constants.services import ServiceContractStatus
 from src.api.accruals.models.accrued_period import AccruedPeriod
 from src.api.accruals.models.contract_accrual import ContractAccrual
 from src.api.services.models.service_contract import ServiceContract
@@ -58,16 +57,20 @@ class AccrualReportsService:
             .filter(
                 # Include if:
                 # 1. Contract has at least one accrued period in the date range, OR
-                # 2. Contract doesn't have accrued periods but its contract accrual is not completed and has remaining amount, OR
-                # 3. Contract doesn't have a contract accrual but its start date is on or before the date range
+                # 2. Contract is pending to be accrued and was created before the end of the date range
                 (ContractAccrual.id.in_(accrued_contract_ids_subquery)) |
-
                 (
-                    (ServiceContract.status == ServiceContractStatus.ACTIVE) &
+                    # Contract was created before end of date range AND
                     (ServiceContract.contract_date <= end_date) &
-                    ((ContractAccrual.id.is_(None)) | ((ContractAccrual.accrual_status != 'COMPLETED') &
-                    (ContractAccrual.remaining_amount_to_accrue > 0)))
-                    
+                    (
+                        # Either no contract accrual exists (new contract), OR
+                        (ContractAccrual.id.is_(None)) |
+                        # Contract accrual exists but is not completed AND has remaining amount (including negative amounts)
+                        (
+                            (ContractAccrual.accrual_status != 'COMPLETED') &
+                            (ContractAccrual.remaining_amount_to_accrue != 0)  # Include negative amounts
+                        )
+                    )
                 )
             )
             .order_by(

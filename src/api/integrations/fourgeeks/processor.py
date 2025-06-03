@@ -36,31 +36,26 @@ class EnrollmentProcessor:
     def process_enrollment(self, enrollment: dict, contract_id: int):
         try:
             cohort = enrollment.get("cohort", {})
-            cohort_slug = cohort.get("slug")
 
-            if not self._validate_enrollment(cohort, cohort_slug):
+            if not self._validate_enrollment(cohort):
                 return
 
+            cohort_slug = cohort.get("slug")
             start_date = cohort.get("kickoff_date")
             end_date = cohort.get("ending_date")
+
             educational_status = map_educational_status(
-                enrollment.get("educational_status", "ACTIVE"))
+                enrollment.get("educational_status"))
 
             status_change_date = get_date(enrollment.get(
-                "updated_at")) if educational_status == ServicePeriodStatus.POSTPONED or educational_status == ServicePeriodStatus.DROPPED else None
-
-            if not end_date:
-                self.stats["skipped"] += 1
-                return
-
-            status = map_educational_status(educational_status)
+                "updated_at"), None)
 
             self._process_period(
                 contract_id=contract_id,
                 cohort_slug=cohort_slug,
                 start_date=start_date,
                 end_date=end_date,
-                status=status,
+                status=educational_status,
                 status_change_date=status_change_date
             )
 
@@ -71,14 +66,22 @@ class EnrollmentProcessor:
             )
             self.client_service.db.rollback()
 
-    def _validate_enrollment(self, cohort: dict, cohort_slug: str) -> bool:
+    def _validate_enrollment(self, cohort: dict) -> bool:
+        cohort_slug = cohort.get("slug")
+        cohort_ending_date = cohort.get("ending_date")
+        if cohort_slug and cohort_ending_date and cohort_slug != "yomequedoencasa":
+            return True
+
         if not cohort_slug:
-            self.stats["skipped"] += 1
             self.stats["error_details"].append(
                 f"Found cohort without slug {cohort.get('id')}"
             )
-            return False
-        return True
+        if not cohort_ending_date:
+            self.stats["error_details"].append(
+                f"Found cohort without ending date {cohort.get('id')}"
+            )
+        self.stats["skipped"] += 1
+        return False
 
     def _process_period(
         self,

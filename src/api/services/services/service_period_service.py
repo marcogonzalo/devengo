@@ -60,13 +60,14 @@ class ServicePeriodService:
         self.db.refresh(period)
         return period
 
-    def update_period_status(self, period_id: int, status: ServicePeriodStatus) -> Optional[ServicePeriod]:
+    def update_period_status(self, period_id: int, status: ServicePeriodStatus, status_change_date: date | None = None) -> Optional[ServicePeriod]:
         """Update the status of a service period"""
         period = self.db.get(ServicePeriod, period_id)
         if not period:
             return None
 
         period.status = status
+        period.status_change_date = status_change_date
         self.db.add(period)
         self.db.commit()
         self.db.refresh(period)

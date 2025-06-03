@@ -68,10 +68,10 @@ def get_contracts_by_client(
 def update_contract_status(
     contract_id: int,
     contract_data: ServiceContractUpdate,
-    service_service: ServiceService = Depends(get_service_service)
+    service_contract_service: ServiceContractService = Depends(get_service_contract_service)
 ):
     """Update a contract status"""
-    contract = service_service.update_contract_status(
+    contract = service_contract_service.update_contract_status(
         contract_id, contract_data)
     if not contract:
         raise HTTPException(status_code=404, detail="Contract not found")

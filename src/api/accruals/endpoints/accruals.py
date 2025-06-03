@@ -1,88 +1,117 @@
 from datetime import date
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Response, HTTPException, status
 from sqlalchemy.orm import Session
+from fastapi.logger import logger
 
 from src.api.accruals.services.accrual_reports_service import AccrualReportsService
 from src.api.common.utils.database import get_db
-from src.api.accruals.schemas import ProcessPeriodRequest, ProcessPeriodResponse, ProcessingStatus, ContractProcessingResult, AccruedPeriodResponse
-from src.api.accruals.services.period_processor import PeriodProcessor
-from src.api.integrations.notion import NotionClient, NotionConfig
+from src.api.accruals.schemas import ProcessPeriodRequest, ContractAccrualProcessingResponse
+from src.api.accruals.services.contract_accrual_processor import ContractAccrualProcessor
 
 router = APIRouter(prefix="/accruals", tags=["accruals"])
 
 
-@router.post("/accrue-period", response_model=ProcessPeriodResponse)
-def process_accruals_in_month(
+@router.post("/process-contracts", response_model=ContractAccrualProcessingResponse)
+async def process_contract_accruals(
     request: ProcessPeriodRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Process accruals for all relevant service periods within the specified month.
+    Process contract accruals for a specific month.
 
-    This endpoint will:
-    1. Find all ServicePeriods overlapping with the target month.
-    2. Calculate and create AccruedPeriod records for each relevant ServicePeriod.
-    3. Handle special contract statuses like DROPPED during calculation.
-    4. Handle active contracts with no service periods (Notion check).
+    This endpoint processes all eligible ServiceContracts for the specified month,
+    applying the business logic defined in the accrual schema.
     """
-    processor = PeriodProcessor(db)
+    import time
+    start_time = time.time()
 
-    # Process each service period
-    results = []
-    total_processed = 0
-    successful = 0
-    existing = 0
-    skipped = 0
-    failed = 0
+    try:
+        logger.info(
+            f"Starting contract accrual processing for period: {request.period_start_date}")
 
-    # Get all relevant service periods for the month
-    service_periods = processor.get_service_periods_in_month(
-        request.period_start_date)
+        # Initialize the processor service
+        processor = ContractAccrualProcessor(db)
 
-    # Get a list of all existing accruals for the month
-    contract_ids_with_accruals = processor.get_contract_ids_with_accruals_in_month(
-        request.period_start_date)
+        # Process all contracts for the target month (now async)
+        results = await processor.process_all_contracts(request.period_start_date)
 
-    total_processed = len(service_periods)
-    existing = len(contract_ids_with_accruals)
+        # Format response
+        response = ContractAccrualProcessingResponse(
+            period_start_date=request.period_start_date,
+            summary={
+                "total_contracts_processed": results['total_processed'],
+                "successful_accruals": results['successful'],
+                "failed_accruals": results['failed'],
+                "skipped_accruals": results['skipped']
+            },
+            processing_results=results['results'],
+            notifications=results['notifications']
+        )
 
-    #  Exclude periods that already have an accrual
-    service_periods = [
-        period for period in service_periods
-        if period.contract.id not in contract_ids_with_accruals
-    ]
-    for period in service_periods:
-        result = processor.accrue_service_period(
-            period, request.period_start_date)
-        results.append(result)
+        logger.info(f"Contract accrual processing completed. Processed: {results['total_processed']}, "
+                    f"Successful: {results['successful']}, Failed: {results['failed']}, "
+                    f"Skipped: {results['skipped']}")
 
-        if result.status == ProcessingStatus.SUCCESS:
-            # Count success only if an accrual record was actually created or explicitly not needed
-            if result.accrued_period is not None or "completed" in (result.message):
-                successful += 1
-            elif "No accrual needed" in (result.message) or "" in (result.message):
-                skipped += 1
-            elif result.status == ProcessingStatus.FAILED:
-                failed += 1
-    
-    # --- Handle contracts with no service periods ---
-    no_period_results, no_period_successful, no_period_failed, no_period_skipped = processor.process_contracts_with_no_service_periods(
-        request.period_start_date)
-    results.extend(no_period_results)
-    total_processed += len(no_period_results)
-    successful += no_period_successful
-    failed += no_period_failed
-    skipped += no_period_skipped
+        return response
 
-    return ProcessPeriodResponse(
-        period_start_date=request.period_start_date,
-        total_periods_processed=total_processed,
-        successful_accruals=successful,
-        failed_accruals=failed,
-        existing_accruals=existing,
-        skipped_accruals=skipped,
-        results=results
-    )
+    except Exception as e:
+        logger.error(f"Error in contract accrual processing: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Contract accrual processing failed: {str(e)}"
+        )
+
+
+@router.get("/process-contracts/schema")
+def get_accrual_processing_schema():
+    """
+    Get the accrual processing schema documentation.
+
+    Returns the business logic schema that defines how contract accruals
+    are processed based on ServiceContract and ServicePeriod statuses.
+    """
+    return {
+        "description": "Contract Accrual Processing Schema",
+        "version": "1.0",
+        "workflow": {
+            "active_contracts": {
+                "description": "Contracts with ACTIVE status",
+                "rules": [
+                    "Check ContractAccrual status (COMPLETE vs ACTIVE/PAUSED/Not found)",
+                    "If COMPLETE: Update ServiceContract status based on total to accrue",
+                    "If not COMPLETE: Check for ServicePeriods",
+                    "Without ServicePeriods: Check Notion integration for educational status",
+                    "With ServicePeriods: Process based on period status (ACTIVE/POSTPONED/DROPPED/ENDED)"
+                ]
+            },
+            "canceled_contracts": {
+                "description": "Contracts with CANCELED status",
+                "rules": [
+                    "Check ContractAccrual status",
+                    "If COMPLETE: Ignore",
+                    "If not COMPLETE: Validate consistency with ServicePeriods and Notion data",
+                    "Process full accrual if conditions are met"
+                ]
+            },
+            "closed_contracts": {
+                "description": "Contracts with CLOSED status",
+                "rules": [
+                    "Check ContractAccrual status",
+                    "If COMPLETE: Ignore",
+                    "If not COMPLETE: Validate that all ServicePeriods are ENDED",
+                    "Complete accrual processing"
+                ]
+            }
+        },
+        "integrations": {
+            "notion": "Educational status validation for contracts without ServicePeriods",
+            "service_periods": "Status-based accrual calculation (ACTIVE/POSTPONED/DROPPED/ENDED)"
+        },
+        "notifications": [
+            "not_congruent_status: Status mismatches between systems",
+            "missing_crm_data: Clients not found in CRM systems"
+        ]
+    }
 
 
 @router.get("/export/csv", response_class=Response)

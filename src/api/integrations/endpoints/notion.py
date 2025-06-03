@@ -64,7 +64,7 @@ async def get_page_id(
             status_code=500, detail=f"Failed to get page ID: {str(e)}")
 
 
-@router.post("/sync-page-ids-from-clients")
+@router.get("/sync-page-ids-from-clients")
 async def sync_page_ids_from_clients(
     database_id: str = Query(
         None, description="The Notion database ID (optional, defaults to env)"),

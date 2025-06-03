@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.logger import logger
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
+from api.common.constants.services import ServiceContractStatus
+from api.services.schemas.service_contract import ServiceContractUpdate
 from src.api.services.services.service_contract import ServiceContractService
 from src.api.common.utils.database import get_db
 from src.api.services.endpoints.service import get_service_service
@@ -282,8 +284,14 @@ async def sync_invoices_and_clients(
                         raise e
                 else:
                     if new_amount != 0:
-                        service_contract_service.update_contract_amount(
+                        service_contract = service_contract_service.update_contract_amount(
                             service_contract.id, new_amount)
+                    if round(service_contract.contract_amount, 0) > 0 and service_contract.status != ServiceContractStatus.ACTIVE:
+                        service_contract_service.update_contract_status(
+                            service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.ACTIVE))
+                    elif round(service_contract.contract_amount, 0) == 0 and service_contract.status == ServiceContractStatus.ACTIVE:
+                        service_contract_service.update_contract_status(
+                            service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.CANCELED))
 
                 # Update invoice with service contract id
                 invoice_service.update_invoice(invoice.id, InvoiceUpdate(

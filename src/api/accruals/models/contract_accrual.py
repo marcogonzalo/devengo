@@ -1,6 +1,11 @@
-from typing import List
+from typing import TYPE_CHECKING, List
 from sqlmodel import Field, Relationship
 from src.api.common.models.base import BaseModel, TimestampMixin
+from src.api.accruals.constants.accruals import ContractAccrualStatus
+from src.api.accruals.models.accrued_period import AccruedPeriod
+
+if TYPE_CHECKING:
+    from src.api.services.models.service_contract import ServiceContract
 
 class ContractAccrual(BaseModel, TimestampMixin, table=True):
     """Model to store contract-level accrual data."""
@@ -14,7 +19,7 @@ class ContractAccrual(BaseModel, TimestampMixin, table=True):
     total_sessions_to_accrue: int = Field(nullable=False)
     total_sessions_accrued: int = Field(nullable=False)
     sessions_remaining_to_accrue: int = Field(nullable=False)
-    accrual_status: str = Field(nullable=False)  # e.g. ACTIVE, COMPLETED, etc.
+    accrual_status: ContractAccrualStatus = Field(default=ContractAccrualStatus.ACTIVE, nullable=False)
 
     # Relationship to ServiceContract
     contract: "ServiceContract" = Relationship()
