@@ -133,19 +133,23 @@ class AccrualReportsService:
 
         # Step 3: Organize data for CSV export
         csv_data = []
+        previous_contract_id = None  # Track the previous contract ID
 
         for contract, client, service, period, contract_accrual in results:
+            # Check if this is the first occurrence of this contract
+            is_first_occurrence = contract.id != previous_contract_id
+            
             row = {
-                "Contract start date": contract.contract_date,
-                "Client": client.name,
-                "Email": client.identifier,
-                "Contract Status": contract.status.value,
-                "Service": service.name,
+                "Contract start date": contract.contract_date if is_first_occurrence else "",
+                "Client": client.name if is_first_occurrence else "",
+                "Email": client.identifier if is_first_occurrence else "",
+                "Contract Status": contract.status.value if is_first_occurrence else "",
+                "Service": service.name if is_first_occurrence else "",
                 "Period": period.name if period else "No Period",
                 "Period Status": period.status.value if period else "N/A",
                 "Status Change Date": period.status_change_date if period else None,
-                "Total to accrue": round(contract_accrual.total_amount_to_accrue, 2) if contract_accrual else contract.contract_amount,
-                "Pending to accrue": round(contract_accrual.remaining_amount_to_accrue, 2) if contract_accrual else contract.contract_amount,
+                "Total to accrue": round(contract_accrual.total_amount_to_accrue, 2) if contract_accrual and is_first_occurrence else (contract.contract_amount if is_first_occurrence else ""),
+                "Pending to accrue": round(contract_accrual.remaining_amount_to_accrue, 2) if contract_accrual and is_first_occurrence else (contract.contract_amount if is_first_occurrence else ""),
                 "Period start date": period.start_date if period else None,
                 "Period end date": period.end_date if period else None,
             }
@@ -162,6 +166,9 @@ class AccrualReportsService:
                 row[month_name] = period_accruals.get(month_key, 0.0)
 
             csv_data.append(row)
+            
+            # Update the previous contract ID
+            previous_contract_id = contract.id
 
         return {
             "headers": ["Contract start date", "Client", "Email", "Contract Status", "Service", "Period",
