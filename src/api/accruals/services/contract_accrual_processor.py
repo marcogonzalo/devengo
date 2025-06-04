@@ -37,13 +37,13 @@ class ContractAccrualProcessor:
         Returns:
             Dictionary with processing results and statistics
         """
-        self._log_debug('target_month', target_month)
+        print('target_month', target_month)
         logger.info(
             f"Starting contract accrual processing for month: {target_month}")
 
         # Get all ServiceContracts
         contracts = self._get_all_accruable_service_contracts(target_month)
-        self._log_debug('contracts', contracts)
+        print('contracts', contracts)
 
         results = []
         stats = {
@@ -54,7 +54,7 @@ class ContractAccrualProcessor:
         }
 
         for contract in contracts:
-            self._log_debug('contract', contract)
+            print('contract', contract)
             try:
                 result = await self._process_contract(contract, target_month)
                 results.append(result)
@@ -68,7 +68,7 @@ class ContractAccrualProcessor:
                     stats['skipped'] += 1
 
             except Exception as e:
-                self._log_debug('e', e)
+                print('e', e)
                 logger.error(
                     f"Error processing contract {contract.id}: {str(e)}")
                 error_result = ContractProcessingResult(
@@ -98,8 +98,8 @@ class ContractAccrualProcessor:
         # Calculate month boundaries
         month_start, month_end = get_month_boundaries(target_month)
 
-        self._log_debug('month_start', month_start)
-        self._log_debug('month_end', month_end)
+        print('month_start', month_start)
+        print('month_end', month_end)
 
         # Create aliases for subqueries
         ServicePeriodAlias = aliased(ServicePeriod)
@@ -158,7 +158,7 @@ class ContractAccrualProcessor:
         )
 
         contracts = self.db.execute(stmt).scalars().all()
-        self._log_debug('filtered_contracts_count', len(contracts))
+        print('filtered_contracts_count', len(contracts))
 
         return contracts
 
@@ -173,14 +173,14 @@ class ContractAccrualProcessor:
         Returns:
             ContractProcessingResult with processing outcome
         """
-        self._log_debug('contract.status', contract.status)
+        print('contract.status', contract.status)
 
         if contract.status == ServiceContractStatus.ACTIVE:
             return await self._process_active_contract(contract, target_month)
-        # elif contract.status == ServiceContractStatus.CANCELED:
-        #     return await self._process_canceled_contract(contract, target_month)
-        # elif contract.status == ServiceContractStatus.CLOSED:
-        #     return await self._process_closed_contract(contract, target_month)
+        elif contract.status == ServiceContractStatus.CANCELED:
+            return await self._process_canceled_contract(contract, target_month)
+        elif contract.status == ServiceContractStatus.CLOSED:
+            return await self._process_closed_contract(contract, target_month)
         else:
             return ContractProcessingResult(
                 contract_id=contract.id,
@@ -191,20 +191,36 @@ class ContractAccrualProcessor:
     async def _process_active_contract(self, contract: ServiceContract, target_month: date) -> ContractProcessingResult:
         """Process ServiceContract with ACTIVE status."""
         contract_accrual = self._get_or_create_contract_accrual(contract)
-        self._log_debug('contract_accrual', contract_accrual)
+        print('contract_accrual', contract_accrual)
 
         # Check if accrual is completed or has nothing left to accrue
         if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
             return self._handle_completed_accrual(contract, contract_accrual)
 
-        # Handle common remaining amount checks (zero and negative)
-        result = self._handle_remaining_amount_checks(contract, contract_accrual, target_month)
-        if result:
-            return result
+        # Auto-complete if remaining amount is exactly 0 (but process negative amounts)
+        if contract_accrual.remaining_amount_to_accrue == 0:
+            print('remaining_amount_is_zero_auto_completing',
+                  contract_accrual.remaining_amount_to_accrue)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            return self._handle_completed_accrual(contract, contract_accrual)
+
+        # If remaining amount is negative, accrue the loss fully
+        if contract_accrual.remaining_amount_to_accrue < 0:
+            print('negative_remaining_amount_accruing_loss',
+                  contract_accrual.remaining_amount_to_accrue)
+            self._accrue_fully(contract, contract_accrual, target_month)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SUCCESS,
+                message=f"Accrued loss/overpayment: {contract_accrual.remaining_amount_to_accrue:.2f}"
+            )
 
         # Check if contract has ServicePeriods
         service_periods = self._get_contract_service_periods(contract)
-        self._log_debug('service_periods', service_periods)
+        print('service_periods', service_periods)
 
         if not service_periods:
             return await self._process_contract_without_service_period(contract, contract_accrual, target_month)
@@ -215,18 +231,37 @@ class ContractAccrualProcessor:
         """Process ServiceContract with CANCELED status."""
         contract_accrual = self._get_or_create_contract_accrual(contract)
 
-        # Check if accrual is already completed
-        result = self._check_completed_accrual(contract, contract_accrual)
-        if result:
-            return result
+        if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="Contract accrual already completed"
+            )
 
-        # Handle common remaining amount checks (zero and negative)
-        result = self._handle_remaining_amount_checks(contract, contract_accrual, target_month, "canceled_contract")
-        if result:
-            # Override message for zero case to be more specific
-            if contract_accrual.remaining_amount_to_accrue == 0:
-                result.message = "Contract accrual auto-completed - no remaining amount"
-            return result
+        # Auto-complete if remaining amount is exactly 0 (but process negative amounts)
+        if contract_accrual.remaining_amount_to_accrue == 0:
+            print('canceled_contract_remaining_amount_is_zero_auto_completing',
+                  contract_accrual.remaining_amount_to_accrue)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="Contract accrual auto-completed - no remaining amount"
+            )
+
+        # If remaining amount is negative, accrue the loss fully
+        if contract_accrual.remaining_amount_to_accrue < 0:
+            print('canceled_contract_negative_remaining_amount_accruing_loss',
+                  contract_accrual.remaining_amount_to_accrue)
+            self._accrue_fully(contract, contract_accrual, target_month)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SUCCESS,
+                message=f"Accrued loss/overpayment for canceled contract: {contract_accrual.remaining_amount_to_accrue:.2f}"
+            )
 
         service_periods = self._get_contract_service_periods(contract)
 
@@ -239,18 +274,37 @@ class ContractAccrualProcessor:
         """Process ServiceContract with CLOSED status."""
         contract_accrual = self._get_or_create_contract_accrual(contract)
 
-        # Check if accrual is already completed
-        result = self._check_completed_accrual(contract, contract_accrual)
-        if result:
-            return result
+        if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="Contract accrual already completed"
+            )
 
-        # Handle common remaining amount checks (zero and negative)
-        result = self._handle_remaining_amount_checks(contract, contract_accrual, target_month, "closed_contract")
-        if result:
-            # Override message for zero case to be more specific
-            if contract_accrual.remaining_amount_to_accrue == 0:
-                result.message = "Contract accrual auto-completed - no remaining amount"
-            return result
+        # Auto-complete if remaining amount is exactly 0 (but process negative amounts)
+        if contract_accrual.remaining_amount_to_accrue == 0:
+            print('closed_contract_remaining_amount_is_zero_auto_completing',
+                  contract_accrual.remaining_amount_to_accrue)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="Contract accrual auto-completed - no remaining amount"
+            )
+
+        # If remaining amount is negative, accrue the loss fully
+        if contract_accrual.remaining_amount_to_accrue < 0:
+            print('closed_contract_negative_remaining_amount_accruing_loss',
+                  contract_accrual.remaining_amount_to_accrue)
+            self._accrue_fully(contract, contract_accrual, target_month)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SUCCESS,
+                message=f"Accrued loss/overpayment for closed contract: {contract_accrual.remaining_amount_to_accrue:.2f}"
+            )
 
         service_periods = self._get_contract_service_periods(contract)
 
@@ -263,30 +317,48 @@ class ContractAccrualProcessor:
         """Handle contracts without ServicePeriods - check Notion integration."""
         # Check if client found in Notion
         external_client_data = await self._get_client_from_notion(contract.client)
-        self._log_debug('external_client_data', external_client_data)
+        print('external_client_data', external_client_data)
 
         if not external_client_data:
             if self._is_contract_recent(contract.contract_date):
                 # Client probably missing - check contract date
                 self._add_notification("not_congruent_status",
                                        f"Contract {contract.id} - Possibly a client missing in CRM")
-                return self._create_result(
-                    contract.id,
-                    ProcessingStatus.SKIPPED,
-                    "Recent contract without Notion data - possibly missing in CRM"
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    status=ProcessingStatus.SKIPPED,
+                    message="Recent contract without Notion data - possibly missing in CRM"
                 )
             else:
                 # Contract resigned - accrue fully and complete
+                # Special case: If contract amount is negative and contract is older than 15 days
+                # This handles negative contract resignation cases
+                if contract_accrual.remaining_amount_to_accrue < 0:
+                    print('negative_contract_resignation_older_than_15_days_fully_accruing', 
+                          contract_accrual.remaining_amount_to_accrue)
+                    self._accrue_fully(contract, contract_accrual, target_month)
+                    self._update_contract_accrual_status(
+                        contract_accrual, ContractAccrualStatus.COMPLETED)
+                    self._update_contract_status(
+                        contract, ServiceContractStatus.CANCELED)
+
+                    return ContractProcessingResult(
+                        contract_id=contract.id,
+                        status=ProcessingStatus.SUCCESS,
+                        message=f"Negative contract resignation (>15 days, no Notion profile) - fully accrued: {contract_accrual.remaining_amount_to_accrue:.2f}"
+                    )
+                
+                # Normal positive contract resignation case
                 self._accrue_fully(contract, contract_accrual, target_month)
                 self._update_contract_accrual_status(
                     contract_accrual, ContractAccrualStatus.COMPLETED)
                 self._update_contract_status(
                     contract, ServiceContractStatus.CANCELED)
 
-                return self._create_result(
-                    contract.id,
-                    ProcessingStatus.SUCCESS,
-                    "Contract resigned - accrued fully and canceled"
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    status=ProcessingStatus.SUCCESS,
+                    message="Contract resigned - accrued fully and canceled"
                 )
         else:
             # Found in Notion - check educational status
@@ -307,31 +379,31 @@ class ContractAccrualProcessor:
                     new_status = ServiceContractStatus.CLOSED if is_ended else ServiceContractStatus.CANCELED
                     self._update_contract_status(contract, new_status)
 
-                    return self._create_result(
-                        contract.id,
-                        ProcessingStatus.SUCCESS,
-                        f"Accrued fully and updated to {new_status}"
+                    return ContractProcessingResult(
+                        contract_id=contract.id,
+                        status=ProcessingStatus.SUCCESS,
+                        message=f"Accrued fully and updated to {new_status}"
                     )
                 else:
-                    return self._create_result(
-                        contract.id,
-                        ProcessingStatus.SKIPPED,
-                        "Status change date after month end - ignoring"
+                    return ContractProcessingResult(
+                        contract_id=contract.id,
+                        status=ProcessingStatus.SKIPPED,
+                        message="Status change date after month end - ignoring"
                     )
             else:
                 if self._is_contract_recent(contract.contract_date):
-                    return self._create_result(
-                        contract.id,
-                        ProcessingStatus.SKIPPED,
-                        "Recent contract without service period - ignoring"
+                    return ContractProcessingResult(
+                        contract_id=contract.id,
+                        status=ProcessingStatus.SKIPPED,
+                        message="Recent contract without service period - ignoring"
                     )
                 else:
                     self._add_notification("not_congruent_status",
                                            f"Contract {contract.id} - Client without service period in CRM")
-                    return self._create_result(
-                        contract.id,
-                        ProcessingStatus.SKIPPED,
-                        "Contract without service period - reminder sent"
+                    return ContractProcessingResult(
+                        contract_id=contract.id,
+                        status=ProcessingStatus.SKIPPED,
+                        message="Contract without service period - reminder sent"
                     )
 
     async def _process_contract_with_service_periods(self, contract: ServiceContract, contract_accrual: ContractAccrual, service_periods: List[ServicePeriod], target_month: date) -> ContractProcessingResult:
@@ -341,10 +413,10 @@ class ContractAccrualProcessor:
             service_periods, target_month)
 
         if not overlapping_period:
-            return self._create_result(
-                contract.id,
-                ProcessingStatus.SKIPPED,
-                "No service period overlaps with target month"
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="No service period overlaps with target month"
             )
 
         if self._is_status_change_before_month_end(overlapping_period.status_change_date, target_month):
@@ -371,11 +443,11 @@ class ContractAccrualProcessor:
         accrued_amount = self._accrue_portion(
             contract, contract_accrual, portion, target_month, period)
 
-        return self._create_result(
-            contract.id,
-            ProcessingStatus.SUCCESS,
-            f"Accrued portion {portion:.2%} - Amount: {accrued_amount:.2f}",
-            period.id
+        return ContractProcessingResult(
+            contract_id=contract.id,
+            service_period_id=period.id,
+            status=ProcessingStatus.SUCCESS,
+            message=f"Accrued portion {portion:.2%} - Amount: {accrued_amount:.2f}"
         )
 
     def _process_postponed_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> ContractProcessingResult:
@@ -391,25 +463,44 @@ class ContractAccrualProcessor:
             self._update_contract_accrual_status(
                 contract_accrual, ContractAccrualStatus.PAUSED)
 
-        return self._create_result(
-            contract.id,
-            ProcessingStatus.SUCCESS,
-            f"Accrued until postponement - Amount: {accrued_amount:.2f}, Status: PAUSED",
-            period.id
+        return ContractProcessingResult(
+            contract_id=contract.id,
+            service_period_id=period.id,
+            status=ProcessingStatus.SUCCESS,
+            message=f"Accrued until postponement - Amount: {accrued_amount:.2f}, Status: PAUSED"
         )
 
     def _process_dropped_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> ContractProcessingResult:
         """Process DROPPED service period - accrue fully on status change date."""
+        # Special case: If contract amount is negative and this is the first accrual (no previous accruals)
+        # This handles the case where service period was dropped before accrued period
+        if (contract_accrual.remaining_amount_to_accrue < 0 and 
+            contract_accrual.total_amount_accrued == 0):
+            print('negative_contract_dropped_before_accrual_fully_accruing', 
+                  contract_accrual.remaining_amount_to_accrue)
+            self._accrue_fully(contract, contract_accrual, target_month)
+            self._update_contract_accrual_status(
+                contract_accrual, ContractAccrualStatus.COMPLETED)
+            self._update_contract_status(contract, ServiceContractStatus.CANCELED)
+
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                service_period_id=period.id,
+                status=ProcessingStatus.SUCCESS,
+                message=f"Negative contract service period dropped before accrual - fully accrued: {contract_accrual.remaining_amount_to_accrue:.2f}"
+            )
+        
+        # Normal case: accrue fully for dropped service period
         self._accrue_fully(contract, contract_accrual, target_month)
         self._update_contract_accrual_status(
             contract_accrual, ContractAccrualStatus.COMPLETED)
         self._update_contract_status(contract, ServiceContractStatus.CANCELED)
 
-        return self._create_result(
-            contract.id,
-            ProcessingStatus.SUCCESS,
-            "Service period dropped - accrued fully and contract canceled",
-            period.id
+        return ContractProcessingResult(
+            contract_id=contract.id,
+            service_period_id=period.id,
+            status=ProcessingStatus.SUCCESS,
+            message="Service period dropped - accrued fully and contract canceled"
         )
 
     def _process_ended_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> ContractProcessingResult:
@@ -420,11 +511,11 @@ class ContractAccrualProcessor:
             contract_accrual, ContractAccrualStatus.COMPLETED)
         self._update_contract_status(contract, ServiceContractStatus.CLOSED)
 
-        return self._create_result(
-            contract.id,
-            ProcessingStatus.SUCCESS,
-            f"Service period ended - accrued remaining amount: {remaining_amount:.2f}, contract closed",
-            period.id
+        return ContractProcessingResult(
+            contract_id=contract.id,
+            service_period_id=period.id,
+            status=ProcessingStatus.SUCCESS,
+            message=f"Service period ended - accrued remaining amount: {remaining_amount:.2f}, contract closed"
         )
 
     async def _process_canceled_without_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date) -> ContractProcessingResult:
@@ -433,6 +524,21 @@ class ContractAccrualProcessor:
 
         if not external_client_data:
             # Contract resigned
+            # Special logging for negative contract amounts
+            if contract_accrual.remaining_amount_to_accrue < 0:
+                print('negative_canceled_contract_resignation_fully_accruing',
+                      contract_accrual.remaining_amount_to_accrue)
+                self._accrue_fully(contract, contract_accrual, target_month)
+                self._update_contract_accrual_status(
+                    contract_accrual, ContractAccrualStatus.COMPLETED)
+
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    status=ProcessingStatus.SUCCESS,
+                    message=f"Negative canceled contract resigned - fully accrued: {contract_accrual.remaining_amount_to_accrue:.2f}"
+                )
+            
+            # Normal positive contract resignation case
             self._accrue_fully(contract, contract_accrual, target_month)
             self._update_contract_accrual_status(
                 contract_accrual, ContractAccrualStatus.COMPLETED)
@@ -551,65 +657,6 @@ class ContractAccrualProcessor:
                 message="Closed contract with ended periods - accrued fully"
             )
 
-    # Helper methods
-
-    def _log_debug(self, message: str, value=None):
-        """Debug logging with variable name and value following user's rule."""
-        if value is not None:
-            print(message, value)
-        else:
-            print(message)
-
-    def _create_result(self, contract_id: int, status: ProcessingStatus, message: str, service_period_id: Optional[int] = None) -> ContractProcessingResult:
-        """Create a ContractProcessingResult with consistent structure."""
-        return ContractProcessingResult(
-            contract_id=contract_id,
-            service_period_id=service_period_id,
-            status=status,
-            message=message
-        )
-
-    def _handle_zero_remaining_amount(self, contract: ServiceContract, contract_accrual: ContractAccrual, context: str = "") -> ContractProcessingResult:
-        """Handle contracts with exactly zero remaining amount."""
-        self._log_debug(f'{context}_remaining_amount_is_zero_auto_completing', contract_accrual.remaining_amount_to_accrue)
-        self._update_contract_accrual_status(contract_accrual, ContractAccrualStatus.COMPLETED)
-        return self._handle_completed_accrual(contract, contract_accrual)
-
-    def _handle_negative_remaining_amount(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date, context: str = "") -> ContractProcessingResult:
-        """Handle contracts with negative remaining amount (losses/overpayments)."""
-        self._log_debug(f'{context}_negative_remaining_amount_accruing_loss', contract_accrual.remaining_amount_to_accrue)
-        self._accrue_fully(contract, contract_accrual, target_month)
-        self._update_contract_accrual_status(contract_accrual, ContractAccrualStatus.COMPLETED)
-        
-        message_prefix = f"for {context.replace('_', ' ')} " if context else ""
-        return self._create_result(
-            contract.id,
-            ProcessingStatus.SUCCESS,
-            f"Accrued loss/overpayment {message_prefix}: {contract_accrual.remaining_amount_to_accrue:.2f}"
-        )
-
-    def _check_completed_accrual(self, contract: ServiceContract, contract_accrual: ContractAccrual) -> Optional[ContractProcessingResult]:
-        """Check if accrual is already completed and return appropriate result."""
-        if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
-            return self._create_result(
-                contract.id,
-                ProcessingStatus.SKIPPED,
-                "Contract accrual already completed"
-            )
-        return None
-
-    def _handle_remaining_amount_checks(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date, context: str = "") -> Optional[ContractProcessingResult]:
-        """Handle common remaining amount checks (zero and negative)."""
-        # Auto-complete if remaining amount is exactly 0 (but process negative amounts)
-        if contract_accrual.remaining_amount_to_accrue == 0:
-            return self._handle_zero_remaining_amount(contract, contract_accrual, context)
-
-        # If remaining amount is negative, accrue the loss fully
-        if contract_accrual.remaining_amount_to_accrue < 0:
-            return self._handle_negative_remaining_amount(contract, contract_accrual, target_month, context)
-
-        return None
-
     def _get_or_create_contract_accrual(self, contract: ServiceContract) -> ContractAccrual:
         """Get existing ContractAccrual or create a new one."""
         if contract.contract_accrual:
@@ -669,19 +716,20 @@ class ContractAccrualProcessor:
             try:
                 page = await notion_client.get_page_by_email(database_id=notion_config.database_id, property_name="Email", value=client.identifier)
             except Exception as e:
-                self._log_debug('e', e)
+                print('e', e)
                 logger.warning(
                     f"Failed to check client {client.id} in Notion: {str(e)}")
                 return None
-        educational_status = page.get('Educational Status')
+        properties = page.get('properties', {})
+        educational_status = properties.get('Educational Status')
         if educational_status.get("select"):
             educational_status = educational_status.get(
                 "select", {}).get("name")
             educational_status = map_educational_status(
                 "_".join(educational_status.upper().split()))
 
-        status_change_date = page.get('Drop Date', None) if page.get(
-            'Drop Date', None) else page.get('Certificated At', None)
+        status_change_date = properties.get('Drop Date', None) if properties.get(
+            'Drop Date', None) else properties.get('Certificated At', None)
         if status_change_date:
             if status_change_date.get("date"):
                 status_change_date = status_change_date.get(
@@ -732,7 +780,8 @@ class ContractAccrualProcessor:
         """
         # Only return zero if exactly zero, process negative amounts
         if contract_accrual.remaining_amount_to_accrue == 0:
-            self._log_debug('no_remaining_amount_to_accrue_returning_zero', contract_accrual.remaining_amount_to_accrue)
+            print('no_remaining_amount_to_accrue_returning_zero',
+                  contract_accrual.remaining_amount_to_accrue)
             return 0.0
 
         # Get month boundaries
@@ -751,16 +800,16 @@ class ContractAccrualProcessor:
 
         # Use remaining sessions instead of total sessions
         remaining_sessions = contract_accrual.sessions_remaining_to_accrue
-        self._log_debug('remaining_sessions', remaining_sessions)
-        self._log_debug('sessions_in_overlap', sessions_in_overlap)
+        print('remaining_sessions', remaining_sessions)
+        print('sessions_in_overlap', sessions_in_overlap)
 
         if remaining_sessions <= 0:
-            self._log_debug('no_remaining_sessions_returning_zero', remaining_sessions)
+            print('no_remaining_sessions_returning_zero', remaining_sessions)
             return 0.0
 
         # Calculate portion based on remaining sessions
         portion = min(1.0, sessions_in_overlap / remaining_sessions)
-        self._log_debug('calculated_portion', portion)
+        print('calculated_portion', portion)
 
         return portion
 
@@ -768,7 +817,8 @@ class ContractAccrualProcessor:
         """Calculate portion until status change date based on remaining sessions."""
         # Only return zero if exactly zero, process negative amounts
         if contract_accrual.remaining_amount_to_accrue == 0:
-            self._log_debug('no_remaining_amount_for_status_change_returning_zero', contract_accrual.remaining_amount_to_accrue)
+            print('no_remaining_amount_for_status_change_returning_zero',
+                  contract_accrual.remaining_amount_to_accrue)
             return 0.0
 
         if not period.status_change_date:
@@ -788,7 +838,8 @@ class ContractAccrualProcessor:
         remaining_sessions = contract_accrual.sessions_remaining_to_accrue
 
         if remaining_sessions <= 0:
-            self._log_debug('no_remaining_sessions_for_status_change_returning_zero', remaining_sessions)
+            print('no_remaining_sessions_for_status_change_returning_zero',
+                  remaining_sessions)
             return 0.0
 
         return min(1.0, sessions_until_change / remaining_sessions)
@@ -802,15 +853,17 @@ class ContractAccrualProcessor:
         """
         # Only skip if exactly zero, process negative amounts
         if contract_accrual.remaining_amount_to_accrue == 0:
-            self._log_debug('no_remaining_amount_to_accrue_skipping_accrual', contract_accrual.remaining_amount_to_accrue)
+            print('no_remaining_amount_to_accrue_skipping_accrual',
+                  contract_accrual.remaining_amount_to_accrue)
             return 0.0
 
         # Calculate accrued amount from remaining amount, not total contract amount
         # This will correctly handle negative amounts (losses/overpayments)
         accrued_amount = contract_accrual.remaining_amount_to_accrue * portion
-        self._log_debug('remaining_amount_to_accrue', contract_accrual.remaining_amount_to_accrue)
-        self._log_debug('portion', portion)
-        self._log_debug('accrued_amount', accrued_amount)
+        print('remaining_amount_to_accrue',
+              contract_accrual.remaining_amount_to_accrue)
+        print('portion', portion)
+        print('accrued_amount', accrued_amount)
 
         # Calculate sessions being accrued
         sessions_in_month = period.get_sessions_between(
@@ -845,17 +898,18 @@ class ContractAccrualProcessor:
 
         # Auto-complete if remaining amount reaches zero or becomes negative
         if contract_accrual.remaining_amount_to_accrue <= 0:
-            self._log_debug('accrual_completed_during_processing_auto_completing', contract_accrual.remaining_amount_to_accrue)
+            print('accrual_completed_during_processing_auto_completing',
+                  contract_accrual.remaining_amount_to_accrue)
             contract_accrual.accrual_status = ContractAccrualStatus.COMPLETED
 
             # IMPORTANT: Update contract status when accrual completes
             # This was missing and caused contracts to remain ACTIVE with COMPLETED accruals
             if contract_accrual.total_amount_to_accrue > 0:
                 contract.status = ServiceContractStatus.CLOSED
-                self._log_debug('contract_auto_closed_on_accrual_completion', contract.id)
+                print('contract_auto_closed_on_accrual_completion', contract.id)
             else:
                 contract.status = ServiceContractStatus.CANCELED
-                self._log_debug('contract_auto_canceled_on_accrual_completion', contract.id)
+                print('contract_auto_canceled_on_accrual_completion', contract.id)
 
         self.db.commit()
 
@@ -864,7 +918,7 @@ class ContractAccrualProcessor:
     def _accrue_fully(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date) -> float:
         """Accrue the full remaining amount."""
         remaining_amount = contract_accrual.remaining_amount_to_accrue
-        self._log_debug('accruing_full_remaining_amount', remaining_amount)
+        print('accruing_full_remaining_amount', remaining_amount)
 
         # Create AccruedPeriod record for full remaining amount
         accrued_period = AccruedPeriod(
@@ -894,10 +948,10 @@ class ContractAccrualProcessor:
         if contract.status == ServiceContractStatus.ACTIVE:
             if contract_accrual.total_amount_to_accrue > 0:
                 contract.status = ServiceContractStatus.CLOSED
-                self._log_debug('contract_auto_closed_on_full_accrual', contract.id)
+                print('contract_auto_closed_on_full_accrual', contract.id)
             else:
                 contract.status = ServiceContractStatus.CANCELED
-                self._log_debug('contract_auto_canceled_on_full_accrual', contract.id)
+                print('contract_auto_canceled_on_full_accrual', contract.id)
 
         self.db.commit()
 
@@ -924,6 +978,174 @@ class ContractAccrualProcessor:
             'message': message,
             'timestamp': date.today().isoformat()
         })
+
+    def adapt_results_for_sync_actions(self, results: Dict, processing_start_time: Optional[float] = None) -> 'SyncActionSummary':
+        """
+        Adapt contract accrual processing results for sync-actions integration.
+
+        Args:
+            results: Raw processing results from process_all_contracts()
+            processing_start_time: Optional start time for duration calculation
+
+        Returns:
+            SyncActionSummary formatted for sync-actions system
+        """
+        from datetime import datetime
+        from src.api.accruals.schemas import SyncActionSummary
+
+        # Calculate overall status
+        overall_status = "SUCCESS"
+        if results['failed'] > 0:
+            if results['successful'] == 0:
+                overall_status = "FAILED"
+            else:
+                overall_status = "PARTIAL"
+
+        # Calculate financial metrics
+        total_amount_accrued = 0.0
+        contracts_completed = 0
+        contracts_auto_closed = 0
+        contracts_auto_canceled = 0
+        failed_contract_ids = []
+
+        for result in results['results']:
+            if result.status == ProcessingStatus.FAILED:
+                failed_contract_ids.append(result.contract_id)
+
+            # Extract accrued amounts from messages (if available)
+            if result.message and "Amount:" in result.message:
+                try:
+                    # Extract amount from messages like "Accrued portion 50.00% - Amount: 1234.56"
+                    amount_str = result.message.split("Amount: ")[1].split()[0]
+                    total_amount_accrued += float(amount_str)
+                except (IndexError, ValueError):
+                    pass
+
+            # Count completion events
+            if result.message:
+                if "completed" in result.message.lower():
+                    contracts_completed += 1
+                if "closed" in result.message.lower():
+                    contracts_auto_closed += 1
+                if "canceled" in result.message.lower():
+                    contracts_auto_canceled += 1
+
+        # Analyze notifications
+        critical_notifications = sum(
+            1 for n in results['notifications'] if n.get('type') == 'not_congruent_status')
+        warning_notifications = len(
+            results['notifications']) - critical_notifications
+
+        # Calculate performance metrics
+        processing_duration = None
+        contracts_per_second = None
+        if processing_start_time:
+            processing_duration = datetime.now().timestamp() - processing_start_time
+            if processing_duration > 0:
+                contracts_per_second = results['total_processed'] / \
+                    processing_duration
+
+        # Create breakdown by status
+        breakdown_by_status = {
+            'SUCCESS': results['successful'],
+            'FAILED': results['failed'],
+            'SKIPPED': results['skipped']
+        }
+
+        # Determine if manual review is required
+        manual_review_required = (
+            critical_notifications > 0 or
+            results['failed'] > 0 or
+            # >10% failure rate
+            (results['failed'] / max(results['total_processed'], 1)) > 0.1
+        )
+
+        return SyncActionSummary(
+            action_type="contract_accrual_processing",
+            target_period=date.today(),  # This should be passed as parameter
+            status=overall_status,
+            execution_timestamp=datetime.now().isoformat(),
+
+            # Summary statistics
+            total_contracts=results['total_processed'],
+            successful_count=results['successful'],
+            failed_count=results['failed'],
+            skipped_count=results['skipped'],
+
+            # Financial summary
+            total_amount_accrued=total_amount_accrued,
+            contracts_completed=contracts_completed,
+            contracts_auto_closed=contracts_auto_closed,
+            contracts_auto_canceled=contracts_auto_canceled,
+
+            # Error and notification summary
+            critical_notifications=critical_notifications,
+            warning_notifications=warning_notifications,
+
+            # Performance metrics
+            processing_duration_seconds=processing_duration,
+            contracts_per_second=contracts_per_second,
+
+            # Detailed breakdown
+            breakdown_by_status=breakdown_by_status,
+            failed_contract_ids=failed_contract_ids,
+
+            # Compliance and audit
+            data_consistency_check=results['failed'] == 0,
+            manual_review_required=manual_review_required
+        )
+
+    def extract_sync_action_details(self, results: Dict) -> List['SyncActionDetail']:
+        """
+        Extract detailed sync-action information for individual contracts.
+
+        Args:
+            results: Raw processing results from process_all_contracts()
+
+        Returns:
+            List of SyncActionDetail objects with individual contract information
+        """
+        from src.api.accruals.schemas import SyncActionDetail
+
+        details = []
+
+        for result in results['results']:
+            # Extract accrued amount from message
+            accrued_amount = None
+            if result.message and "Amount:" in result.message:
+                try:
+                    amount_str = result.message.split("Amount: ")[1].split()[0]
+                    accrued_amount = float(amount_str)
+                except (IndexError, ValueError):
+                    pass
+
+            # Determine final contract status from message
+            final_contract_status = None
+            if result.message:
+                if "closed" in result.message.lower():
+                    final_contract_status = "CLOSED"
+                elif "canceled" in result.message.lower():
+                    final_contract_status = "CANCELED"
+                elif "completed" in result.message.lower():
+                    final_contract_status = "COMPLETED"
+
+            # Extract error message for failed cases
+            error_message = None
+            if result.status == ProcessingStatus.FAILED:
+                error_message = result.message
+
+            detail = SyncActionDetail(
+                contract_id=result.contract_id,
+                processing_status=result.status,
+                accrued_amount=accrued_amount,
+                final_contract_status=final_contract_status,
+                error_message=error_message,
+                processing_notes=result.message
+            )
+
+            details.append(detail)
+
+        return details
 
     def _is_period_naturally_completed(self, period: ServicePeriod, target_month: date) -> bool:
         """

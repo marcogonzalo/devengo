@@ -22,9 +22,6 @@ async def process_contract_accruals(
     This endpoint processes all eligible ServiceContracts for the specified month,
     applying the business logic defined in the accrual schema.
     """
-    import time
-    start_time = time.time()
-
     try:
         logger.info(
             f"Starting contract accrual processing for period: {request.period_start_date}")
