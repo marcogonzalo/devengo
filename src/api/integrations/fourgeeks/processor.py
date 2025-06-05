@@ -47,8 +47,8 @@ class EnrollmentProcessor:
             educational_status = map_educational_status(
                 enrollment.get("educational_status"))
 
-            status_change_date = get_date(enrollment.get(
-                "updated_at"), None)
+            fallback_date = start_date if educational_status == ServicePeriodStatus.ACTIVE else None
+            status_change_date = get_date(enrollment.get("updated_at", fallback_date))
 
             self._process_period(
                 contract_id=contract_id,
