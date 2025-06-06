@@ -126,29 +126,210 @@ async def retrieve_notion_external_id_for_clients(client):
     return notion_result
 
 
+def format_result_output(result, step_name="", context=""):
+    """Format API call results in a readable way."""
+    if not result:
+        return "No result returned"
+    
+    # Handle error cases
+    if isinstance(result, dict) and "error" in result:
+        return f"❌ ERROR: {result['error']}"
+    
+    # Create formatted output
+    output_lines = []
+    
+    if context:
+        output_lines.append(f"📋 Context: {context}")
+    
+    output_lines.append("=" * 60)
+    
+    if isinstance(result, dict):
+        # Handle success status
+        if result.get("success") is True:
+            output_lines.append("✅ Status: SUCCESS")
+        elif result.get("success") is False:
+            output_lines.append("❌ Status: FAILED")
+        
+        # Special handling for accrual results
+        if "period_start_date" in result and "results" in result:
+            output_lines.append(f"📅 Period: {result['period_start_date']}")
+            output_lines.append("")
+            
+            # Accrual summary metrics
+            accrual_metrics = [
+                ("total_periods_processed", "📊 Total Periods Processed"),
+                ("successful_accruals", "✅ Successful Accruals"),
+                ("failed_accruals", "❌ Failed Accruals"),
+                ("existing_accruals", "🔄 Existing Accruals"),
+                ("skipped_accruals", "⏭️ Skipped Accruals"),
+            ]
+            
+            for key, label in accrual_metrics:
+                if key in result:
+                    output_lines.append(f"{label}: {result[key]}")
+            
+            # Process detailed results
+            detailed_results = result.get("results", [])
+            if detailed_results:
+                output_lines.append("")
+                output_lines.append(f"📋 Detailed Results ({len(detailed_results)} items):")
+                
+                # Group results by status
+                status_groups = {}
+                for item in detailed_results:
+                    status = item.get("status", "UNKNOWN")
+                    if status not in status_groups:
+                        status_groups[status] = []
+                    status_groups[status].append(item)
+                
+                # Display grouped results
+                for status, items in status_groups.items():
+                    status_emoji = {
+                        "SUCCESS": "✅",
+                        "HALTED": "🛑", 
+                        "FAILED": "❌",
+                        "SKIPPED": "⏭️"
+                    }.get(status, "ℹ️")
+                    
+                    output_lines.append(f"   {status_emoji} {status}: {len(items)} items")
+                    
+                    # Show first few examples for each status
+                    for i, item in enumerate(items[:3], 1):
+                        contract_id = item.get("contract_id", "N/A")
+                        service_period_id = item.get("service_period_id", "N/A")
+                        message = item.get("message", "No message")
+                        
+                        # Truncate long messages
+                        if len(message) > 80:
+                            message = message[:77] + "..."
+                        
+                        output_lines.append(f"      {i}. Contract {contract_id} (Period: {service_period_id})")
+                        output_lines.append(f"         💬 {message}")
+                    
+                    if len(items) > 3:
+                        output_lines.append(f"      ... and {len(items) - 3} more {status} items")
+                    output_lines.append("")
+        
+        else:
+            # Handle regular API results (non-accrual)
+            # Display key metrics
+            metrics_to_show = [
+                ("created", "📈 Created"),
+                ("updated", "🔄 Updated"), 
+                ("processed", "⚙️ Processed"),
+                ("linked", "🔗 Linked"),
+                ("skipped", "⏭️ Skipped"),
+                ("errors", "❌ Errors"),
+                ("not_found", "🔍 Not Found"),
+            ]
+            
+            for key, label in metrics_to_show:
+                if key in result:
+                    output_lines.append(f"{label}: {result[key]}")
+            
+            # Show error details if any
+            error_details = result.get("error_details", [])
+            if error_details:
+                output_lines.append(f"🚨 Error Details ({len(error_details)} errors):")
+                for i, error in enumerate(error_details[:5], 1):  # Show first 5 errors
+                    output_lines.append(f"   {i}. {error}")
+                if len(error_details) > 5:
+                    output_lines.append(f"   ... and {len(error_details) - 5} more errors")
+            
+            # Show not found details if any
+            not_found_details = result.get("not_found_details", [])
+            if not_found_details:
+                output_lines.append(f"🔍 Not Found Details ({len(not_found_details)} items):")
+                for i, item in enumerate(not_found_details[:3], 1):  # Show first 3
+                    output_lines.append(f"   {i}. {item}")
+                if len(not_found_details) > 3:
+                    output_lines.append(f"   ... and {len(not_found_details) - 3} more items")
+            
+            # Show any other relevant fields
+            excluded_fields = {
+                "success", "created", "updated", "processed", "linked", 
+                "skipped", "errors", "error_details", "not_found", "not_found_details",
+                "period_start_date", "total_periods_processed", "successful_accruals",
+                "failed_accruals", "existing_accruals", "skipped_accruals", "results"
+            }
+            
+            other_fields = {k: v for k, v in result.items() if k not in excluded_fields}
+            
+            if other_fields:
+                output_lines.append("📊 Additional Info:")
+                for key, value in other_fields.items():
+                    if hasattr(value, '__len__'):
+                        output_lines.append(f"   {key}: {len(value)} items")
+                    else:
+                        output_lines.append(f"   {key}: {value}")
+    
+    else:
+        # For non-dict results, just show them as-is
+        output_lines.append(f"📄 Result: {result}")
+    
+    output_lines.append("=" * 60)
+    
+    return "\n".join(output_lines)
+
+
 async def perform_accruals(client):
-    """Step 5: Perform accruals for each month in 2024"""
-    logger.info("Step 5: Performing accruals for each month in 2024")
+    """Perform accruals for each month in 2024"""
+    logger.info("🔄 Step 6: Performing accruals for each month in 2024")
+    
+    total_results = {
+        "months_processed": 0,
+        "total_periods_processed": 0,
+        "total_successful_accruals": 0,
+        "total_failed_accruals": 0,
+        "total_existing_accruals": 0,
+        "total_skipped_accruals": 0,
+        "total_errors": 0,
+        "monthly_results": []
+    }
+    
     for i in range(len(MONTHLY_TIMESTAMPS) - 1):
         start_timestamp = MONTHLY_TIMESTAMPS[i]
-        accrual_date = datetime.fromtimestamp(
-            start_timestamp).strftime('%Y-%m-%d')
-        logger.info(f"Processing accruals for month starting: {accrual_date}")
-        # The accruals endpoint expects a JSON body with 'period_start_date'
+        accrual_date = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
+        
+        logger.info(f"📅 Processing accruals for month: {accrual_date}")
+        
         try:
             response = await client.post(
-                f"{BASE_URL}/accruals/accrue-period",
+                f"{BASE_URL}/accruals/process-contracts",
                 json={"period_start_date": accrual_date}
             )
             response.raise_for_status()
             result = response.json()
-            logger.info(f"Accruals for {accrual_date} completed: {result}")
+            
+            print('accrual_result', result)
+            
+            formatted_output = format_result_output(result, "accruals", f"Month: {accrual_date}")
+            logger.info(f"Accruals for {accrual_date} completed:\n{formatted_output}")
+            
+            # Accumulate results
+            total_results["months_processed"] += 1
+            if isinstance(result, dict):
+                total_results["total_periods_processed"] += result.get("total_periods_processed", 0)
+                total_results["total_successful_accruals"] += result.get("successful_accruals", 0)
+                total_results["total_failed_accruals"] += result.get("failed_accruals", 0)
+                total_results["total_existing_accruals"] += result.get("existing_accruals", 0)
+                total_results["total_skipped_accruals"] += result.get("skipped_accruals", 0)
+            total_results["monthly_results"].append({
+                "month": accrual_date,
+                "result": result
+            })
+            
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP error occurred during accruals: {e}")
+            logger.error(f"❌ HTTP error occurred during accruals for {accrual_date}: {e}")
             logger.error(f"Response content: {e.response.text}")
+            total_results["total_errors"] += 1
         except Exception as e:
-            logger.error(f"An error occurred during accruals: {e}")
-    logger.info("Accruals for all months in 2024 completed.")
+            logger.error(f"❌ An error occurred during accruals for {accrual_date}: {e}")
+            total_results["total_errors"] += 1
+    
+    # Log summary
+    summary_output = format_result_output(total_results, "accruals", "Summary for All Months")
+    logger.info(f"📊 Accruals Summary:\n{summary_output}")
 
 
 async def main(from_step: str = None):
@@ -183,7 +364,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--from-step",
         type=str,
-        choices=STEP_NAMES,
+        choices=STEP_NAMES + ["accruals"],
         help=f"Start execution from this step (skipping previous steps). Choices: {', '.join(STEP_NAMES)}"
     )
     args = parser.parse_args()
