@@ -99,8 +99,7 @@ async def get_client_educational_data(client) -> Optional[Dict]:
         educational_status = educational_status.get("select", {}).get("name")
         educational_status = "_".join(educational_status.upper().split())
     # Extract status change date ('Drop Date' or 'Certificated At')
-    # 'Drop Date ' must remain with a space at the end because its the right label
-    status_change_date = properties.get('Drop Date ')
+    status_change_date = properties.get('Drop Date')
     if not (status_change_date and status_change_date.get("date")):
         status_change_date = properties.get('Certificated At')
     if status_change_date and status_change_date.get("date"):
