@@ -10,6 +10,7 @@ alembic = "*"
 httpx = "*"
 cryptography = "*"
 psycopg2-binary = "*"
+python-dateutil = "*"
 
 [dev-packages]
 debugpy = "*"
