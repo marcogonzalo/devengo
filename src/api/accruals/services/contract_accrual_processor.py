@@ -294,7 +294,7 @@ class ContractAccrualProcessor:
         if not service_periods:
             return await self._process_closed_without_service_period(contract, contract_accrual, target_month)
         else:
-            return self._process_closed_with_service_periods(contract, contract_accrual, service_periods, target_month)
+            return await self._process_closed_with_service_periods(contract, contract_accrual, service_periods, target_month)
 
     async def _process_contract_without_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date) -> ContractProcessingResult:
         """Handle contracts without ServicePeriods - check Notion integration."""
@@ -302,7 +302,7 @@ class ContractAccrualProcessor:
         external_client_data = await get_client_educational_data(contract.client)
 
         if not external_client_data:
-            if self._is_contract_recent(contract.contract_date):
+            if self._is_contract_recent(contract.contract_date, target_month):
                 # Client probably missing - check contract date
                 self._add_notification("not_congruent_status",
                                        f"Contract {contract.id} - Possibly a client missing in CRM")
@@ -368,7 +368,7 @@ class ContractAccrualProcessor:
                         message="Status change date after month end - ignoring"
                     )
             else:
-                if self._is_contract_recent(contract.contract_date):
+                if self._is_contract_recent(contract.contract_date, target_month):
                     return ContractProcessingResult(
                         contract_id=contract.id,
                         status=ProcessingStatus.SKIPPED,
@@ -606,13 +606,26 @@ class ContractAccrualProcessor:
         external_client_data = await get_client_educational_data(contract.client)
 
         if not external_client_data:
-            self._add_notification("not_congruent_status",
-                                   f"Contract {contract.id} closed but client doesn't have service periods")
-            return ContractProcessingResult(
-                contract_id=contract.id,
-                status=ProcessingStatus.SKIPPED,
-                message="Closed contract without service periods - notification sent"
-            )
+            if self._is_contract_recent(contract.contract_date, target_month):
+                # Client probably missing - check contract date
+                self._add_notification("not_congruent_status",
+                                       f"Contract {contract.id} - Possibly a client missing in CRM (closed contract)")
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    status=ProcessingStatus.SKIPPED,
+                    message="Recent closed contract without Notion data - possibly missing in CRM"
+                )
+            else:
+                # Contract resigned - handle based on amount type  
+                if contract_accrual.remaining_amount_to_accrue == 0:
+                    # Zero-amount closed contract resignation
+                    context = "closed contract resignation (>15 days, no Notion profile)"
+                    return self._handle_zero_amount_contract_resignation(contract, contract_accrual, context, target_month)
+                else:
+                    # Non-zero amount closed contract resignation
+                    is_negative = contract_accrual.remaining_amount_to_accrue < 0
+                    context = "closed contract resignation (>15 days, no Notion profile)"
+                    return self._handle_contract_resignation(contract, contract_accrual, target_month, context, is_negative)
         else:
             educational_status = map_educational_status(
                 external_client_data.get('educational_status'))
@@ -655,15 +668,22 @@ class ContractAccrualProcessor:
                     message="Not congruent status - notification sent"
                 )
 
-    def _process_closed_with_service_periods(self, contract: ServiceContract, contract_accrual: ContractAccrual, service_periods: List[ServicePeriod], target_month: date) -> ContractProcessingResult:
+    async def _process_closed_with_service_periods(self, contract: ServiceContract, contract_accrual: ContractAccrual, service_periods: List[ServicePeriod], target_month: date) -> ContractProcessingResult:
         """Handle closed contracts with ServicePeriods."""
-        # Check if all service periods are ENDED
+        # Check if accrual is incomplete - if so, process it regardless of status congruence
+        if contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and contract_accrual.remaining_amount_to_accrue != 0:
+            print(f'closed_contract_with_incomplete_accrual_processing_anyway', 
+                  f'contract_{contract.id}', f'remaining_{contract_accrual.remaining_amount_to_accrue}')
+            # Process like an active contract since accrual is incomplete
+            return await self._process_contract_with_service_periods(contract, contract_accrual, service_periods, target_month)
+        
+        # If accrual is complete, check for status congruence (original logic)
         non_ended_periods = [
             p for p in service_periods if p.status != ServicePeriodStatus.ENDED]
 
         if non_ended_periods:
             self._add_notification("not_congruent_status",
-                                   f"Contract {contract.id} closed but client doesn't have ENDED service periods")
+                                   f"Contract {contract.id} closed but client doesn't have ENDED service periods (accrual completed)")
             return ContractProcessingResult(
                 contract_id=contract.id,
                 status=ProcessingStatus.SKIPPED,
@@ -721,9 +741,15 @@ class ContractAccrualProcessor:
             message="Contract accrual completed - updated contract status"
         )
 
-    def _is_contract_recent(self, contract_date: date) -> bool:
-        """Check if contract date is within 15 days."""
-        return (date.today() - contract_date).days <= 15
+    def _is_contract_recent(self, contract_date: date, target_month: Optional[date] = None) -> bool:
+        """Check if contract date is within 15 days of the target month end."""
+        if target_month is None:
+            reference_date = date.today()
+        else:
+            # Use the end of the target month as reference point
+            reference_date = get_month_end(target_month)
+        
+        return (reference_date - contract_date).days <= 15
 
     def _is_status_change_before_month_end(self, change_date: Optional[date], target_month: date) -> bool:
         """Check if status change date is before end of target month."""
