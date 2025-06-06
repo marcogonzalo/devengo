@@ -396,6 +396,19 @@ class ContractAccrualProcessor:
             service_periods, target_month)
 
         if not overlapping_period:
+            # Special case: For CLOSED contracts with incomplete accruals and ENDED periods
+            # If there are ENDED periods that completed before target month, process them
+            ended_periods = [p for p in service_periods if p.status == ServicePeriodStatus.ENDED]
+            if (ended_periods and contract.status == ServiceContractStatus.CLOSED and 
+                contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and 
+                contract_accrual.remaining_amount_to_accrue > 0):
+                
+                # Find the most recent ended period to process
+                most_recent_ended = max(ended_periods, key=lambda p: p.end_date)
+                print(f'no_overlapping_but_processing_ended_period', f'contract_{contract.id}', 
+                      f'period_{most_recent_ended.id}', f'ended_{most_recent_ended.end_date}')
+                return self._process_ended_service_period(contract, contract_accrual, most_recent_ended, target_month)
+            
             return ContractProcessingResult(
                 contract_id=contract.id,
                 status=ProcessingStatus.SKIPPED,
