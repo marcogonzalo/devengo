@@ -68,9 +68,9 @@ async def get_client_educational_data(client) -> Optional[Dict]:
     from .config import NotionConfig
     from .client import NotionClient
 
+    notion_config = NotionConfig()
+    notion_client = NotionClient(notion_config)
     try:
-        notion_config = NotionConfig()
-        notion_client = NotionClient(notion_config)
         page = await notion_client.get_page_content(client.get_external_id('notion'))
     except Exception as e:
         page = None
@@ -98,8 +98,11 @@ async def get_client_educational_data(client) -> Optional[Dict]:
     if educational_status and educational_status.get("select"):
         educational_status = educational_status.get("select", {}).get("name")
         educational_status = "_".join(educational_status.upper().split())
-    # Extract status change date (Drop Date or Certificated At)
-    status_change_date = properties.get('Drop Date') or properties.get('Certificated At')
+    # Extract status change date ('Drop Date' or 'Certificated At')
+    # 'Drop Date ' must remain with a space at the end because its the right label
+    status_change_date = properties.get('Drop Date ')
+    if not (status_change_date and status_change_date.get("date")):
+        status_change_date = properties.get('Certificated At')
     if status_change_date and status_change_date.get("date"):
         status_change_date = status_change_date.get("date", {}).get("start")
         # Convert string to date if needed

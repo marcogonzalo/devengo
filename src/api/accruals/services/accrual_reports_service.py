@@ -65,11 +65,8 @@ class AccrualReportsService:
                     (
                         # Either no contract accrual exists (new contract), OR
                         (ContractAccrual.id.is_(None)) |
-                        # Contract accrual exists but is not completed AND has remaining amount (including negative amounts)
-                        (
-                            (ContractAccrual.accrual_status != 'COMPLETED') &
-                            (ContractAccrual.remaining_amount_to_accrue != 0)  # Include negative amounts
-                        )
+                        # Contract accrual exists but is not completed (regardless of remaining amount)
+                        (ContractAccrual.accrual_status != 'COMPLETED')
                     )
                 )
             )
@@ -82,8 +79,7 @@ class AccrualReportsService:
                     (ContractAccrual.id.in_(accrued_contract_ids_subquery), 1),
                     (
                         (ContractAccrual.id.notin_(accrued_contract_ids_subquery)) &
-                        (ContractAccrual.accrual_status != 'COMPLETED') &
-                        (ContractAccrual.remaining_amount_to_accrue > 0), 2
+                        (ContractAccrual.accrual_status != 'COMPLETED'), 2
                     ),
                     (ContractAccrual.id.is_(None), 3),
                     else_=4  # Fallback for any edge cases
