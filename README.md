@@ -25,7 +25,7 @@ So, we must apply the accrual principle to the invoicing, not payments. This mea
   - If someone has not started using the service, it shouldn't be processed until the service is re-assigned.
   - As the service has not started, there are no consequences, but the timetable must be updated to reflect the correct accrual.
 - A person temporarily pauses the service:
-  - The invoice must accrue from the beginning of the service until the last moment the person was active.
+  - The invoice(s) must accrue from the beginning of the service period until the last moment the person was active.
   - When the person resumes the service, the remaining amount (and, possibly, a re-enrollment fee) will be applied on the same basis in the new course period.
   - Any additional charges must be accrued in the new service period.
 - A client ID from the invoice account doesn't match the CRM.
