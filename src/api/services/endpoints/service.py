@@ -1,4 +1,4 @@
-from api.common.utils.database import get_db
+from src.api.common.utils.database import get_db
 from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session

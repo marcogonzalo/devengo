@@ -1,0 +1,78 @@
+# To run tests, use one of these commands:
+#
+# Run all tests (default):
+#   docker compose -f docker-compose.test.yml up --build
+#
+# Run with coverage:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest --cov=src/api tests/
+#
+# Run specific test file:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest tests/test_client_service.py -v
+#
+# Run tests matching a pattern:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest -v -k "test_create"
+#
+# Run tests with detailed output:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest -vv
+#
+# Run tests and stop on first failure:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest -x
+#
+# Run tests with JUnit report (useful for CI):
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest --junitxml=test-results.xml
+#
+# Run tests in parallel:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest -n auto
+#
+# Run tests with HTML coverage report:
+#   docker compose -f docker-compose.test.yml run --rm api-test pytest --cov=src/api --cov-report=html tests/
+
+services:
+  api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      target: api-test
+    volumes:
+      - .:/app
+      - /app/.venv/
+    environment:
+      PYTHONDONTWRITEBYTECODE: 1
+      PYTHONUNBUFFERED: 1
+      DATABASE_URL: "postgresql://postgres:postgres@db-test:5432/test_db"
+      PYTHONPATH: /app
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_db
+      ENV: test
+      ENCRYPTION_KEY: "EyDTdXQ1qyg76Qe0fEGpMcs5v2YOFPeLNdIx56p6Hbc="
+    depends_on:
+      db-test:
+        condition: service_healthy
+    networks:
+      - test-network
+    working_dir: /app
+    command: pytest -v
+
+  db-test:
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=test_db
+    ports:
+      - "5433:5432" # Different port to avoid conflicts with dev database
+    networks:
+      - test-network
+    tmpfs:
+      - /var/lib/postgresql/data # Use tmpfs for faster testing
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "test_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks:
+  test-network:
+    name: test-network
+    driver: bridge

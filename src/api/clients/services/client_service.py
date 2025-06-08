@@ -58,7 +58,7 @@ class ClientService:
         if not client:
             return None
 
-        client_data_dict = client_data.dict(exclude_unset=True)
+        client_data_dict = client_data.model_dump(exclude_unset=True)
 
         # Handle encrypted fields separately
         if "identifier" in client_data_dict:
@@ -115,3 +115,19 @@ class ClientService:
             ClientExternalId.client_id == client_id,
             ClientExternalId.system == system
         )).first()
+
+    def get_clients_missing_external_id(self) -> List[dict]:
+        # Example: define the systems you care about
+        systems = ["holded", "fourgeeks", "notion"]
+        all_clients = self.db.exec(select(Client)).all()
+        result = []
+        for client in all_clients:
+            for system in systems:
+                if not client.get_external_id(system):
+                    result.append({
+                        "id": client.id,
+                        "name": client.name,
+                        "identifier": client.identifier,
+                        "system": system
+                    })
+        return result   

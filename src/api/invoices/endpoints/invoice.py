@@ -1,8 +1,7 @@
-from api.common.utils.database import get_db
+from src.api.common.utils.database import get_db
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from datetime import date
 from src.api.invoices.schemas.invoice import InvoiceCreate, InvoiceRead, InvoiceUpdate
 from src.api.invoices.services.invoice_service import InvoiceService
 

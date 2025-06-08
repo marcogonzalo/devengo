@@ -1,6 +1,6 @@
-from typing import Optional, List
-from pydantic import BaseModel, EmailStr, field_validator
-from datetime import datetime, timezone
+from typing import Optional
+from pydantic import BaseModel, field_validator
+from datetime import datetime
 
 
 class ClientBase(BaseModel):
@@ -63,3 +63,4 @@ class ClientExternalIdRead(ClientExternalIdBase):
     external_id: str  # This will be decrypted from the model
     created_at: datetime
     updated_at: datetime
+

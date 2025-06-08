@@ -5,8 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.logger import logger
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
-from api.common.constants.services import ServiceContractStatus
-from api.services.schemas.service_contract import ServiceContractUpdate
+from src.api.common.constants.services import ServiceContractStatus
+from src.api.services.schemas.service_contract import ServiceContractUpdate
 from src.api.services.services.service_contract import ServiceContractService
 from src.api.common.utils.database import get_db
 from src.api.services.endpoints.service import get_service_service

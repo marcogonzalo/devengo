@@ -146,4 +146,5 @@ class FourGeeksClient:
 
     def __del__(self):
         """Close the httpx client when the object is destroyed"""
-        self._client.close()
+        if hasattr(self, '_client') and self._client:
+            self._client.close()

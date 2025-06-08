@@ -3,7 +3,7 @@ from sqlmodel import Session, select
 from datetime import date
 from src.api.services.models.service_period import ServicePeriod
 from src.api.services.schemas.service_period import ServicePeriodCreate, ServicePeriodUpdate
-from api.common.constants.services import ServicePeriodStatus
+from src.api.common.constants.services import ServicePeriodStatus
 
 
 class ServicePeriodService:

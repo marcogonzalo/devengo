@@ -17,7 +17,9 @@ class ServiceService:
                 external_id=service_data.get('external_id'),
                 name=service_data.get('name'),
                 description=service_data.get('description'),
-                account_identifier=service_data.get('account_identifier')
+                account_identifier=service_data.get('account_identifier'),
+                total_sessions=service_data.get('total_sessions', 60),
+                sessions_per_week=service_data.get('sessions_per_week', 3)
             )
         else:
             # Handle Pydantic model input
@@ -25,7 +27,9 @@ class ServiceService:
                 external_id=service_data.external_id,
                 name=service_data.name,
                 description=service_data.description,
-                account_identifier=getattr(service_data, 'account_identifier', None)
+                account_identifier=getattr(service_data, 'account_identifier', None),
+                total_sessions=getattr(service_data, 'total_sessions', 60),
+                sessions_per_week=getattr(service_data, 'sessions_per_week', 3)
             )
 
         self.db.add(service)

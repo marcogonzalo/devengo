@@ -1,5 +1,5 @@
-from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, validator
+from typing import Optional, Dict, Any
+from pydantic import BaseModel
 from datetime import datetime, date
 
 
@@ -39,6 +39,7 @@ class InvoiceUpdate(BaseModel):
     due_date: Optional[date] = None
     total_amount: Optional[float] = None
     currency: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[int] = None
     client_id: Optional[int] = None
     service_contract_id: Optional[int] = None
+    original_data: Optional[Dict[str, Any]] = None

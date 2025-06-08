@@ -2,8 +2,8 @@ from src.api.services.models.service import Service  #  noqa
 from datetime import date
 from typing import List, Optional
 from sqlmodel import Session, select
-from api.common.constants.services import ServiceContractStatus
-from api.invoices.schemas.invoice import InvoiceBase
+from src.api.common.constants.services import ServiceContractStatus
+from src.api.invoices.schemas.invoice import InvoiceBase
 from src.api.services.models.service_contract import ServiceContract
 from src.api.services.schemas.service_contract import ServiceContractCreate, ServiceContractUpdate
 
@@ -18,6 +18,8 @@ class ServiceContractService:
             service_id=contract_data.service_id,
             client_id=contract_data.client_id,
             contract_date=contract_data.contract_date,
+            contract_amount=contract_data.contract_amount,
+            contract_currency=contract_data.contract_currency,
             status=contract_data.status
         )
 

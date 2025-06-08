@@ -2,7 +2,7 @@ import logging
 import httpx
 from typing import Dict
 from fastapi import HTTPException
-from api.integrations.holded.config import HoldedConfig
+from src.api.integrations.holded.config import HoldedConfig
 
 
 class HoldedClient:
