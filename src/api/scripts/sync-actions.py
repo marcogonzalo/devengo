@@ -25,23 +25,6 @@ logger = logging.getLogger(__name__)
 # Base URL for API calls
 BASE_URL = os.environ.get("VITE_API_URL", "http://localhost: 3001")
 
-# Timestamps for the first day of each month in 2024 through Jan 1, 2025
-MONTHLY_TIMESTAMPS = [
-    1704067200,  # 2024-01-01
-    1706745600,  # 2024-02-01
-    1709251200,  # 2024-03-01
-    1711929600,  # 2024-04-01
-    1714521600,  # 2024-05-01
-    1717200000,  # 2024-06-01
-    1719792000,  # 2024-07-01
-    1722470400,  # 2024-08-01
-    1725148800,  # 2024-09-01
-    1727740800,  # 2024-10-01
-    1730419200,  # 2024-11-01
-    1733011200,  # 2024-12-01
-    1735689600,  # 2025-01-01
-]
-
 STEP_NAMES = [
     "services",
     "invoices",
@@ -76,12 +59,24 @@ async def import_services_from_invoicing_system(client):
     return services_result
 
 
-async def import_invoices_and_clients_from_invoicing_system(client):
+def generate_monthly_timestamps(year):
+    """Generate Unix timestamps for the first day of each month in the given year, plus Jan 1 of the next year."""
+    timestamps = []
+    for month in range(1, 13):
+        dt = datetime(year, month, 1)
+        timestamps.append(int(dt.timestamp()))
+    # Add Jan 1 of the next year
+    dt_next = datetime(year + 1, 1, 1)
+    timestamps.append(int(dt_next.timestamp()))
+    return timestamps
+
+
+async def import_invoices_and_clients_from_invoicing_system(client, monthly_timestamps):
     """Step 2: Import Invoices and Clients from Invoicing System"""
     logger.info("Step 2: Importing Invoices and Clients from Invoicing System")
-    for i in range(len(MONTHLY_TIMESTAMPS) - 1):
-        start_timestamp = MONTHLY_TIMESTAMPS[i]
-        end_timestamp = MONTHLY_TIMESTAMPS[i + 1]
+    for i in range(len(monthly_timestamps) - 1):
+        start_timestamp = monthly_timestamps[i]
+        end_timestamp = monthly_timestamps[i + 1]
         date_str = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
         logger.info(f"Processing month starting: {date_str}")
         invoices_clients_result = await make_api_call(
@@ -272,10 +267,9 @@ def format_result_output(result, step_name="", context=""):
     return "\n".join(output_lines)
 
 
-async def perform_accruals(client):
-    """Perform accruals for each month in 2024"""
-    logger.info("🔄 Step 6: Performing accruals for each month in 2024")
-    
+async def perform_accruals(client, monthly_timestamps):
+    """Perform accruals for each month in the given year"""
+    logger.info("🔄 Step 6: Performing accruals for each month in selected year")
     total_results = {
         "months_processed": 0,
         "total_periods_processed": 0,
@@ -286,13 +280,10 @@ async def perform_accruals(client):
         "total_errors": 0,
         "monthly_results": []
     }
-    
-    for i in range(len(MONTHLY_TIMESTAMPS) - 1):
-        start_timestamp = MONTHLY_TIMESTAMPS[i]
+    for i in range(len(monthly_timestamps) - 1):
+        start_timestamp = monthly_timestamps[i]
         accrual_date = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
-        
         logger.info(f"📅 Processing accruals for month: {accrual_date}")
-        
         try:
             response = await client.post(
                 f"{BASE_URL}/accruals/process-contracts",
@@ -300,13 +291,9 @@ async def perform_accruals(client):
             )
             response.raise_for_status()
             result = response.json()
-            
             print('accrual_result', result)
-            
             formatted_output = format_result_output(result, "accruals", f"Month: {accrual_date}")
             logger.info(f"Accruals for {accrual_date} completed:\n{formatted_output}")
-            
-            # Accumulate results
             total_results["months_processed"] += 1
             if isinstance(result, dict):
                 total_results["total_periods_processed"] += result.get("total_periods_processed", 0)
@@ -318,7 +305,6 @@ async def perform_accruals(client):
                 "month": accrual_date,
                 "result": result
             })
-            
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ HTTP error occurred during accruals for {accrual_date}: {e}")
             logger.error(f"Response content: {e.response.text}")
@@ -326,14 +312,12 @@ async def perform_accruals(client):
         except Exception as e:
             logger.error(f"❌ An error occurred during accruals for {accrual_date}: {e}")
             total_results["total_errors"] += 1
-    
-    # Log summary
     summary_output = format_result_output(total_results, "accruals", "Summary for All Months")
     logger.info(f"📊 Accruals Summary:\n{summary_output}")
 
 
-async def main(from_step: str = None):
-    """Execute all synchronization steps in sequence, optionally starting from a specific step."""
+async def main(from_step: str = None, year: int = 2024):
+    """Execute all synchronization steps in sequence, optionally starting from a specific step and/or year."""
     STEP_FUNCTIONS = [
         import_services_from_invoicing_system,
         import_invoices_and_clients_from_invoicing_system,
@@ -341,11 +325,12 @@ async def main(from_step: str = None):
         generate_service_periods_from_crm,
         retrieve_notion_external_id_for_clients,
     ]
+    monthly_timestamps = generate_monthly_timestamps(year)
     async with httpx.AsyncClient(timeout=300.0) as client:
         start_index = 0
         if from_step:
             if from_step == "accruals":
-                await perform_accruals(client)
+                await perform_accruals(client, monthly_timestamps=monthly_timestamps)
                 return
             try:
                 start_index = STEP_NAMES.index(from_step)
@@ -353,9 +338,11 @@ async def main(from_step: str = None):
                 logger.error(
                     f"Unknown step: {from_step}. Valid steps are: {', '.join(STEP_NAMES)}")
                 return
-
         for func in STEP_FUNCTIONS[start_index:]:
-            await func(client)
+            if func == import_invoices_and_clients_from_invoicing_system:
+                await func(client, monthly_timestamps=monthly_timestamps)
+            else:
+                await func(client)
         logger.info("All synchronization steps completed successfully")
 
 if __name__ == "__main__":
@@ -367,5 +354,11 @@ if __name__ == "__main__":
         choices=STEP_NAMES + ["accruals"],
         help=f"Start execution from this step (skipping previous steps). Choices: {', '.join(STEP_NAMES)}"
     )
+    parser.add_argument(
+        "--year",
+        type=int,
+        default=2024,
+        help="Target year for processing (e.g., 2024). Defaults to 2024 if not set."
+    )
     args = parser.parse_args()
-    asyncio.run(main(from_step=args.from_step))
+    asyncio.run(main(from_step=args.from_step, year=args.year))
