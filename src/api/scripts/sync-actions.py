@@ -71,6 +71,23 @@ def generate_monthly_timestamps(year):
     return timestamps
 
 
+def generate_monthly_timestamps_from_range(start_date, end_date):
+    """Generate Unix timestamps for the first day of each month from start_date to end_date (exclusive)."""
+    timestamps = []
+    current = datetime(start_date.year, start_date.month, 1)
+    while current < end_date:
+        timestamps.append(int(current.timestamp()))
+        # Move to the first day of the next month
+        if current.month == 12:
+            current = datetime(current.year + 1, 1, 1)
+        else:
+            current = datetime(current.year, current.month + 1, 1)
+    # Add end_date if it's the first of a month and not already included
+    if end_date.day == 1 and int(end_date.timestamp()) not in timestamps:
+        timestamps.append(int(end_date.timestamp()))
+    return timestamps
+
+
 async def import_invoices_and_clients_from_invoicing_system(client, monthly_timestamps):
     """Step 2: Import Invoices and Clients from Invoicing System"""
     logger.info("Step 2: Importing Invoices and Clients from Invoicing System")
@@ -316,8 +333,8 @@ async def perform_accruals(client, monthly_timestamps):
     logger.info(f"📊 Accruals Summary:\n{summary_output}")
 
 
-async def main(from_step: str = None, year: int = 2024):
-    """Execute all synchronization steps in sequence, optionally starting from a specific step and/or year."""
+async def main(from_step: str = None, year: int = 2024, start_date: str = None, end_date: str = None):
+    """Execute all synchronization steps in sequence, optionally starting from a specific step and/or year or date range."""
     STEP_FUNCTIONS = [
         import_services_from_invoicing_system,
         import_invoices_and_clients_from_invoicing_system,
@@ -325,7 +342,12 @@ async def main(from_step: str = None, year: int = 2024):
         generate_service_periods_from_crm,
         retrieve_notion_external_id_for_clients,
     ]
-    monthly_timestamps = generate_monthly_timestamps(year)
+    if start_date and end_date:
+        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        monthly_timestamps = generate_monthly_timestamps_from_range(start_dt, end_dt)
+    else:
+        monthly_timestamps = generate_monthly_timestamps(year)
     async with httpx.AsyncClient(timeout=300.0) as client:
         start_index = 0
         if from_step:
@@ -360,5 +382,15 @@ if __name__ == "__main__":
         default=2024,
         help="Target year for processing (e.g., 2024). Defaults to 2024 if not set."
     )
+    parser.add_argument(
+        "--start-date",
+        type=str,
+        help="Start date for processing in YYYY-MM-DD format. Overrides --year if set."
+    )
+    parser.add_argument(
+        "--end-date",
+        type=str,
+        help="End date (exclusive) for processing in YYYY-MM-DD format. Overrides --year if set."
+    )
     args = parser.parse_args()
-    asyncio.run(main(from_step=args.from_step, year=args.year))
+    asyncio.run(main(from_step=args.from_step, year=args.year, start_date=args.start_date, end_date=args.end_date))
