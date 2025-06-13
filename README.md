@@ -1,7 +1,7 @@
 Devengo
 ========================
 
-_Tool to manage incomes and outcomes following the accrual principle_
+Tool to manage incomes and outcomes following the accrual principle.
 
 Introduction
 ------------------------
@@ -133,8 +133,64 @@ in month?"]
     
 ```
 
-Execution order
+Usage
 ------------------------
+
+## Usage: Bulk Synchronization Script
+
+The `sync-actions.py` script allows you to perform all the main data synchronization and accrual operations in sequence or individually, automating the workflow described above.
+
+You can run the script from the command line:
+
+```bash
+pipenv sync-actions [OPTIONS]
+```
+
+### Options
+
+- `--from-step <step>`: Start execution from a specific step, skipping all previous steps. Possible values:
+  - `services` — Import Services from Invoicing System
+  - `invoices` — Import Invoices and Clients from Invoicing System
+  - `crm-clients` — Retrieve Clients data from CRM
+  - `service-periods` — Generate Service Periods from CRM
+  - `notion-external-id` — Sync Notion external IDs for clients
+  - `accruals` — Only perform accruals for each month (skips all previous steps)
+- `--year <year>`: Target year for processing (e.g., `2024`). Defaults to 2024 if not set. Ignored if `--start-date` and `--end-date` are provided.
+- `--start-date <YYYY-MM-DD>`: Start date for processing (inclusive). If set, overrides `--year`.
+- `--end-date <YYYY-MM-DD>`: End date for processing (exclusive). If set, overrides `--year`.
+
+#### Examples
+
+- Run all steps for the default year (2024):
+
+  ```bash
+  python src/api/scripts/sync-actions.py
+  ```
+
+- Start from importing invoices and clients:
+
+  ```bash
+  python src/api/scripts/sync-actions.py --from-step invoices
+  ```
+
+- Only perform accruals for each month in 2024:
+
+  ```bash
+  python src/api/scripts/sync-actions.py --from-step accruals
+  ```
+
+- Process a custom date range (e.g., from March to June 2024):
+
+  ```bash
+  python src/api/scripts/sync-actions.py --start-date 2024-03-01 --end-date 2024-07-01
+  ```
+
+### Environment Variables
+
+- `VITE_API_URL`: Base URL for API calls (default: `http://localhost:3001`)
+
+Main URLs
+-------
 
 1. Import Services from Invoicing System: `/api/integrations/holded/sync-services`
 2. Import Invoices and Clients from Invoicing System: `/api/integrations/holded/sync-invoices-and-clients`
