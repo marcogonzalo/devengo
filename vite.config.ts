@@ -1,37 +1,12 @@
-import { AliasOptions, defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import path from 'path'
+import react from "@vitejs/plugin-react";
+import {defineConfig} from "vite";
 
-// https://vitejs.dev/config/
+import vitePluginInjectDataLocator from "./plugins/vite-plugin-inject-data-locator";
+
+// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
-  root: '.',
-  publicDir: 'public',
+  plugins: [react(), vitePluginInjectDataLocator()],
   server: {
-    port: 3000,
-    proxy: {
-      '/api': { // Forward /api requests to the FastAPI backend
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-    },
+    allowedHosts: true,
   },
-  build: {
-    outDir: 'public',
-    emptyOutDir: true,
-    manifest: true,
-    rollupOptions: {
-      input: path.resolve(__dirname, 'index.html'),
-      output: {
-        entryFileNames: '[name].[hash].js',
-        chunkFileNames: '[name].[hash].js',
-        assetFileNames: '[name].[hash].[ext]'
-      }
-    }
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src/client')
-    } as AliasOptions,
-  },
-})
+});
