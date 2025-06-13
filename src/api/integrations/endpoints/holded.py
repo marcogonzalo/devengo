@@ -294,7 +294,7 @@ async def sync_invoices_and_clients(
                         service_contract_service.update_contract_status(
                             service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.CANCELED))
 
-                # --- NEW LOGIC: Reactivate contract accrual if completed ---
+                # Reactivate contract accrual if completed
                 contract_accrual = getattr(service_contract, 'contract_accrual', None)
                 if contract_accrual and contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
                     # Reactivate accrual only (not contract)
