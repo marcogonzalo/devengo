@@ -515,16 +515,61 @@ class ContractAccrualProcessor:
         )
 
     def _process_ended_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> ContractProcessingResult:
-        """Process ENDED service period - accrue remaining amount."""
-        remaining_amount = contract_accrual.remaining_amount_to_accrue
-        return self._handle_full_accrual_with_status_update(
-            contract,
-            contract_accrual,
-            target_month,
-            ServiceContractStatus.CLOSED,
-            f"Service period ended - accrued remaining amount: {remaining_amount:.2f}, contract closed",
-            service_period_id=period.id
-        )
+        """Process ENDED service period - handle proportional vs. full accrual based on period timing."""
+        month_start, month_end = get_month_boundaries(target_month)
+        
+        # Check if the period's end date is after the target month
+        # This indicates that the period was active during the target month
+        if period.end_date > month_end:
+            # Period extends beyond target month - process proportionally for the month
+            # This handles cases where periods are marked as ENDED retrospectively
+            portion = self._calculate_monthly_portion(contract_accrual, period, target_month)
+            if portion > 0:
+                accrued_amount = self._accrue_portion(contract, contract_accrual, portion, target_month, period)
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    service_period_id=period.id,
+                    status=ProcessingStatus.SUCCESS,
+                    message=f"Service period ended (extends beyond month) - accrued portion {portion:.2%} - Amount: {accrued_amount:.2f}"
+                )
+            else:
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    service_period_id=period.id,
+                    status=ProcessingStatus.SKIPPED,
+                    message="Service period ended but no portion to accrue for this month"
+                )
+        elif self._is_period_naturally_completed(period, target_month):
+            # Period ends during the target month - process proportionally until end
+            portion = self._calculate_portion_until_status_change(contract_accrual, period, target_month)
+            if portion > 0:
+                accrued_amount = self._accrue_portion(contract, contract_accrual, portion, target_month, period)
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    service_period_id=period.id,
+                    status=ProcessingStatus.SUCCESS,
+                    message=f"Service period ended during month - accrued portion {portion:.2%} - Amount: {accrued_amount:.2f}"
+                )
+            else:
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    service_period_id=period.id,
+                    status=ProcessingStatus.SKIPPED,
+                    message="Service period ended but no portion to accrue for this month"
+                )
+        else:
+            # Period ended before the target month but still has remaining accrual
+            # This can happen with periods marked as ENDED retrospectively
+            # Accrue the full remaining amount and close the contract
+            remaining_amount = contract_accrual.remaining_amount_to_accrue
+            return self._handle_full_accrual_with_status_update(
+                contract,
+                contract_accrual,
+                target_month,
+                ServiceContractStatus.CLOSED,
+                f"Service period ended (retrospectively) - accrued remaining amount: {remaining_amount:.2f}, contract closed",
+                service_period_id=period.id
+            )
 
     async def _process_canceled_without_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date) -> ContractProcessingResult:
         """Handle canceled contracts without ServicePeriods."""
