@@ -25,6 +25,7 @@ import {
   ClientRead,
   ClientMissingExternalId,
   ClientExternalIdCreate,
+  ClientUpdate,
 } from "../utils/api";
 
 interface ClientWithMissingIds extends ClientRead {
@@ -41,6 +42,18 @@ const ClientManagement: React.FC = () => {
   const [error, setError] = React.useState<string | null>(null);
   const [isUpdating, setIsUpdating] = React.useState(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
+
+  // Email editing states
+  const [selectedClientForEmail, setSelectedClientForEmail] =
+    React.useState<ClientWithMissingIds | null>(null);
+  const [newEmail, setNewEmail] = React.useState("");
+  const [showEmailConfirmation, setShowEmailConfirmation] = React.useState(false);
+  const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
+  const {
+    isOpen: isEmailModalOpen,
+    onOpen: onEmailModalOpen,
+    onClose: onEmailModalClose,
+  } = useDisclosure();
 
   // Define the external ID systems we track
   const externalIdSystems = ["holded", "fourgeeks", "notion"];
@@ -174,6 +187,70 @@ const ClientManagement: React.FC = () => {
     }
   };
 
+  const handleEditEmail = (client: ClientWithMissingIds) => {
+    setSelectedClientForEmail(client);
+    setNewEmail(client.identifier);
+    setShowEmailConfirmation(false);
+    onEmailModalOpen();
+  };
+
+  const handleEmailChange = () => {
+    if (!newEmail.trim()) {
+      setError("Email cannot be empty");
+      return;
+    }
+    
+    if (newEmail === selectedClientForEmail?.identifier) {
+      setError("New email is the same as current email");
+      return;
+    }
+    
+    setShowEmailConfirmation(true);
+  };
+
+  const handleConfirmEmailChange = async () => {
+    if (!selectedClientForEmail) return;
+
+    setIsUpdatingEmail(true);
+    setError(null);
+
+    try {
+      const updateData = { identifier: newEmail.trim() };
+      const response = await clientApi.updateClient(selectedClientForEmail.id, updateData);
+
+      if (response.error) {
+        throw new Error(response.error);
+      }
+
+      // Refresh the client list
+      await fetchClients();
+      
+      // Close modals and reset states
+      onEmailModalClose();
+      setSelectedClientForEmail(null);
+      setNewEmail("");
+      setShowEmailConfirmation(false);
+    } catch (err) {
+      console.error("Error updating client email:", err);
+      setError(err instanceof Error ? err.message : "Failed to update email");
+    } finally {
+      setIsUpdatingEmail(false);
+    }
+  };
+
+  const handleCancelEmailChange = () => {
+    setShowEmailConfirmation(false);
+    setNewEmail(selectedClientForEmail?.identifier || "");
+  };
+
+  const handleCloseEmailModal = () => {
+    onEmailModalClose();
+    setSelectedClientForEmail(null);
+    setNewEmail("");
+    setShowEmailConfirmation(false);
+    setError(null);
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -272,8 +349,20 @@ const ClientManagement: React.FC = () => {
                 <div className="font-medium">{client.name || "No name"}</div>
               </TableCell>
               <TableCell>
-                <div className="text-sm text-default-600">
-                  {client.identifier}
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-default-600">
+                    {client.identifier}
+                  </div>
+                  <Button
+                    isIconOnly
+                    color="secondary"
+                    variant="light"
+                    size="sm"
+                    onPress={() => handleEditEmail(client)}
+                    className="min-w-unit-6 w-6 h-6"
+                  >
+                    <Icon icon="lucide:edit" className="text-xs" />
+                  </Button>
                 </div>
               </TableCell>
               <TableCell>
@@ -426,6 +515,109 @@ const ClientManagement: React.FC = () => {
                 >
                   Save Changes
                 </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
+
+      {/* Email Editing Modal */}
+      <Modal isOpen={isEmailModalOpen} onClose={handleCloseEmailModal} size="md">
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                <h3>Edit Client Email</h3>
+                <p className="text-sm text-default-500">
+                  {selectedClientForEmail?.name}
+                </p>
+              </ModalHeader>
+              <ModalBody>
+                <div className="space-y-4">
+                  <div className="text-sm text-default-600">
+                    <span className="font-medium">Current Email:</span> {selectedClientForEmail?.identifier}
+                  </div>
+                  
+                  <Input
+                    type="email"
+                    label="New Email"
+                    placeholder="Enter new email address"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    startContent={<Icon icon="lucide:mail" />}
+                    isDisabled={isUpdatingEmail}
+                  />
+                  
+                  {error && (
+                    <div className="flex items-center gap-2 text-danger text-sm">
+                      <Icon icon="lucide:alert-circle" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+                  
+                  {showEmailConfirmation && (
+                    <div className="p-4 bg-warning-50 border border-warning-200 rounded-lg">
+                      <div className="flex items-start gap-3">
+                        <Icon icon="lucide:alert-triangle" className="text-warning-600 mt-0.5" />
+                        <div>
+                          <h4 className="font-medium text-warning-800">Confirm Email Change</h4>
+                          <p className="text-sm text-warning-700 mt-1">
+                            Are you sure you want to change the email from{" "}
+                            <span className="font-mono bg-warning-100 px-1 rounded">
+                              {selectedClientForEmail?.identifier}
+                            </span>{" "}
+                            to{" "}
+                            <span className="font-mono bg-warning-100 px-1 rounded">
+                              {newEmail}
+                            </span>?
+                          </p>
+                          <p className="text-xs text-warning-600 mt-2">
+                            This action cannot be undone easily and may affect client communications.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </ModalBody>
+              <ModalFooter>
+                {showEmailConfirmation ? (
+                  <>
+                    <Button 
+                      color="default" 
+                      variant="light" 
+                      onPress={handleCancelEmailChange}
+                      isDisabled={isUpdatingEmail}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      color="warning"
+                      onPress={handleConfirmEmailChange}
+                      isLoading={isUpdatingEmail}
+                    >
+                      Confirm Change
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <Button 
+                      color="danger" 
+                      variant="light" 
+                      onPress={handleCloseEmailModal}
+                      isDisabled={isUpdatingEmail}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      color="primary"
+                      onPress={handleEmailChange}
+                      isDisabled={isUpdatingEmail}
+                    >
+                      Update Email
+                    </Button>
+                  </>
+                )}
               </ModalFooter>
             </>
           )}

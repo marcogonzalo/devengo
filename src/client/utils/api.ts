@@ -91,6 +91,11 @@ export interface ClientExternalIdCreate {
   external_id: string;
 }
 
+export interface ClientUpdate {
+  name?: string;
+  identifier?: string; // email
+}
+
 export const clientApi = {
   // Get all clients
   getClients: async (): Promise<ApiResponse<ClientRead[]>> => {
@@ -110,5 +115,10 @@ export const clientApi = {
   // Get client by ID
   getClient: async (clientId: number): Promise<ApiResponse<ClientRead>> => {
     return apiClient.get<ClientRead>(`/clients/${clientId}`);
+  },
+
+  // Update client
+  updateClient: async (clientId: number, updateData: ClientUpdate): Promise<ApiResponse<ClientRead>> => {
+    return apiClient.put<ClientRead>(`/clients/${clientId}`, updateData);
   },
 }; 
