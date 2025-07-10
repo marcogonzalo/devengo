@@ -213,6 +213,10 @@ const ClientManagement: React.FC = () => {
             Clients with more missing external IDs are prioritized at the top by
             the API
           </p>
+          <p className="text-sm text-default-400 mt-1">
+            <Icon icon="lucide:filter" className="inline text-xs mr-1" />
+            Only showing clients with active contracts or missing contracts
+          </p>
         </div>
         <Button
           color="primary"

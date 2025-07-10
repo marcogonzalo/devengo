@@ -4,6 +4,8 @@ from sqlalchemy.orm import selectinload
 from api.common.constants.integrations import ENABLED_INTEGRATIONS
 from src.api.clients.models.client import Client, ClientExternalId
 from src.api.clients.schemas.client import ClientCreate, ClientUpdate, ClientExternalIdCreate
+from src.api.services.models.service_contract import ServiceContract
+from src.api.common.constants.services import ServiceContractStatus
 
 
 class ClientService:
@@ -44,16 +46,29 @@ class ClientService:
         Get a list of clients sorted by multiple criteria:
         1. Number of missing external IDs (most missing first)
         2. Name alphabetically (A to Z)
+        
+        Only includes clients with:
+        - At least one ACTIVE contract, OR
+        - No contracts at all (missing contracts)
         """
         # Get all clients with their external IDs loaded
         all_clients = self.db.exec(
             select(Client).options(selectinload(Client.external_ids))
         ).all()
         
+        # Get contract filtering sets
+        active_contract_client_ids, all_contract_client_ids = self._get_client_contract_filter_sets()
+        
+        # Filter clients: include those with active contracts OR no contracts at all
+        filtered_clients = [
+            client for client in all_clients 
+            if self._should_include_client(client.id, active_contract_client_ids, all_contract_client_ids)
+        ]
+        
         # Create a list to store clients with their missing ID counts
         clients_with_counts = []
         
-        for client in all_clients:
+        for client in filtered_clients:
             missing_count = self._count_missing_external_ids(client, self.TRACKED_SYSTEMS)
             clients_with_counts.append((client, missing_count))
         
@@ -88,6 +103,43 @@ class ClientService:
             if not client.get_external_id(system):
                 missing_count += 1
         return missing_count
+    
+    def _get_client_contract_filter_sets(self) -> tuple[set[int], set[int]]:
+        """
+        Get sets of client IDs for contract filtering.
+        
+        Returns:
+            Tuple of (active_contract_client_ids, all_contract_client_ids)
+        """
+        # Get all clients with active contracts
+        active_contract_clients = self.db.exec(
+            select(Client.id).join(ServiceContract).where(
+                ServiceContract.status == ServiceContractStatus.ACTIVE
+            ).distinct()
+        ).all()
+        
+        # Get all clients that have any contracts
+        clients_with_contracts = self.db.exec(
+            select(Client.id).join(ServiceContract).distinct()
+        ).all()
+        
+        return set(active_contract_clients), set(clients_with_contracts)
+    
+    def _should_include_client(self, client_id: int, active_contract_client_ids: set[int], all_contract_client_ids: set[int]) -> bool:
+        """
+        Determine if a client should be included based on contract status.
+        
+        Args:
+            client_id: The client ID to check
+            active_contract_client_ids: Set of client IDs with active contracts
+            all_contract_client_ids: Set of client IDs with any contracts
+            
+        Returns:
+            True if client should be included (has active contract or no contracts)
+        """
+        has_active_contract = client_id in active_contract_client_ids
+        has_no_contracts = client_id not in all_contract_client_ids
+        return has_active_contract or has_no_contracts
 
     def get_clients_with_no_external_id(self, system: str) -> List[Client]:
         """Get a list of clients that don't have an external ID for a specific system"""
@@ -173,20 +225,31 @@ class ClientService:
         """
         Get a list of clients with missing external IDs for tracked systems.
         
+        Only includes clients with:
+        - At least one ACTIVE contract, OR
+        - No contracts at all (missing contracts)
+        
         Returns:
             List of dictionaries containing client info and missing system
         """
+        # Get all clients with their external IDs loaded
         all_clients = self.db.exec(
             select(Client).options(selectinload(Client.external_ids))
         ).all()
+        
+        # Get contract filtering sets
+        active_contract_client_ids, all_contract_client_ids = self._get_client_contract_filter_sets()
+        
         result = []
         for client in all_clients:
-            for system in self.TRACKED_SYSTEMS:
-                if not client.get_external_id(system):
-                    result.append({
-                        "id": client.id,
-                        "name": client.name,
-                        "identifier": client.identifier,
-                        "system": system
-                    })
+            # Only process clients with active contracts or no contracts
+            if self._should_include_client(client.id, active_contract_client_ids, all_contract_client_ids):
+                for system in self.TRACKED_SYSTEMS:
+                    if not client.get_external_id(system):
+                        result.append({
+                            "id": client.id,
+                            "name": client.name,
+                            "identifier": client.identifier,
+                            "system": system
+                        })
         return result   
