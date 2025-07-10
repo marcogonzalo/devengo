@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
+from api.common.constants.integrations import ENABLED_INTEGRATIONS
 from src.api.clients.models.client import Client, ClientExternalId
 from src.api.clients.schemas.client import ClientCreate, ClientUpdate, ClientExternalIdCreate
 
@@ -9,7 +10,7 @@ class ClientService:
     """Service class for managing client operations and external ID tracking."""
     
     # Define the external ID systems we track
-    from src.api.integrations.endpoints import TRACKED_SYSTEMS
+    TRACKED_SYSTEMS = ENABLED_INTEGRATIONS
     
     def __init__(self, db: Session):
         self.db = db

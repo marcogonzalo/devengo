@@ -1,0 +1,1 @@
+ENABLED_INTEGRATIONS = ["holded", "fourgeeks", "notion"]
