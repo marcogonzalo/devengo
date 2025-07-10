@@ -9,6 +9,8 @@ __pycache__
 *.pyd
 *.pyw
 *.pyz
+.pytest_cache
+htmlcov/
 
 # Logs
 logs
