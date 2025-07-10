@@ -240,3 +240,55 @@ class AccrualReportsService:
 
         output.seek(0)
         return output
+    
+    def get_dashboard_summary(self) -> Dict[str, Any]:
+        """
+        Get dashboard summary statistics for the accruals overview.
+        
+        Returns:
+            Dictionary containing:
+            - total_contracts: Total number of service contracts
+            - total_amount: Total contract amounts
+            - accrued_amount: Total amount already accrued
+            - pending_amount: Total amount pending to accrue
+        """
+        # Get all service contracts with their accruals
+        contracts_query = (
+            self.db.query(ServiceContract, ContractAccrual)
+            .outerjoin(ServiceContract.contract_accrual)
+            .filter(ServiceContract.status.in_([
+                ServiceContractStatus.ACTIVE,
+                ServiceContractStatus.CANCELED,
+                ServiceContractStatus.CLOSED
+            ]))
+        )
+        
+        contracts = contracts_query.all()
+        
+        # Calculate totals
+        total_contracts = len(contracts)
+        total_amount = sum(contract.contract_amount for contract, _ in contracts)
+        
+        # Calculate accrued and pending amounts
+        accrued_amount = 0.0
+        pending_amount = 0.0
+        
+        for contract, contract_accrual in contracts:
+            if contract_accrual:
+                # Total accrued is the difference between total to accrue and remaining
+                accrued_this_contract = (
+                    contract_accrual.total_amount_to_accrue - 
+                    contract_accrual.remaining_amount_to_accrue
+                )
+                accrued_amount += accrued_this_contract
+                pending_amount += contract_accrual.remaining_amount_to_accrue
+            else:
+                # No accrual record yet, so everything is pending
+                pending_amount += contract.contract_amount
+        
+        return {
+            "total_contracts": total_contracts,
+            "total_amount": total_amount,
+            "accrued_amount": accrued_amount,
+            "pending_amount": pending_amount
+        }

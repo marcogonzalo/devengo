@@ -5,6 +5,13 @@ import { Icon } from '@iconify/react';
 const AccrualReports: React.FC = () => {
   const [selectedYear, setSelectedYear] = React.useState('2023');
 
+  const formatCurrency = (amount: number): string => {
+    return amount
+      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      .replace(/,/g, '.')
+      .replace(/\.([^.]*)$/, ',$1') + ' €';
+  };
+
   // Placeholder data - replace with actual data fetching logic
   const years = ['2023', '2022', '2021', '2020'];
   const monthlyData = [
@@ -40,7 +47,7 @@ const AccrualReports: React.FC = () => {
             {monthlyData.map((data) => (
               <div key={data.month} className="flex justify-between items-center">
                 <span>{data.month}</span>
-                <span className="font-semibold">${data.amount.toLocaleString()}</span>
+                <span className="font-semibold">{formatCurrency(data.amount)}</span>
               </div>
             ))}
           </div>

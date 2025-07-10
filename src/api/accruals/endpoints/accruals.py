@@ -138,3 +138,32 @@ def export_accruals_as_csv(
             "Content-Disposition": f"attachment; filename={filename}"
         }
     )
+
+
+@router.get("/dashboard-summary")
+def get_dashboard_summary(db: Session = Depends(get_db)):
+    """
+    Get dashboard summary statistics for the accruals overview.
+    
+    Returns:
+        - Total contracts count
+        - Total contract amounts
+        - Total accrued amounts
+        - Total pending amounts
+    """
+    try:
+        reports_service = AccrualReportsService(db)
+        summary = reports_service.get_dashboard_summary()
+        
+        return {
+            "total_contracts": summary["total_contracts"],
+            "total_amount": summary["total_amount"],
+            "accrued_amount": summary["accrued_amount"],
+            "pending_amount": summary["pending_amount"]
+        }
+    except Exception as e:
+        logger.error(f"Error getting dashboard summary: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get dashboard summary: {str(e)}"
+        )

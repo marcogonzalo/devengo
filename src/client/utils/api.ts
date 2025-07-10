@@ -121,4 +121,20 @@ export const clientApi = {
   updateClient: async (clientId: number, updateData: ClientUpdate): Promise<ApiResponse<ClientRead>> => {
     return apiClient.put<ClientRead>(`/clients/${clientId}`, updateData);
   },
+};
+
+// Dashboard summary types
+export interface DashboardSummary {
+  total_contracts: number;
+  total_amount: number;
+  accrued_amount: number;
+  pending_amount: number;
+}
+
+// Dashboard API functions
+export const dashboardApi = {
+  // Get dashboard summary statistics
+  getSummary: async (): Promise<ApiResponse<DashboardSummary>> => {
+    return apiClient.get<DashboardSummary>('/accruals/dashboard-summary');
+  },
 }; 
