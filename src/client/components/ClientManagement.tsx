@@ -336,7 +336,6 @@ const ClientManagement: React.FC = () => {
         <TableHeader>
           <TableColumn>NAME</TableColumn>
           <TableColumn>EMAIL</TableColumn>
-          <TableColumn>MISSING IDS</TableColumn>
           <TableColumn>HOLDED ID</TableColumn>
           <TableColumn>4GEEKS ID</TableColumn>
           <TableColumn>NOTION ID</TableColumn>
@@ -364,29 +363,6 @@ const ClientManagement: React.FC = () => {
                     <Icon icon="lucide:edit" className="text-xs" />
                   </Button>
                 </div>
-              </TableCell>
-              <TableCell>
-                {client.missingExternalIds.length > 0 ? (
-                  <div className="flex items-center gap-2">
-                    <Chip
-                      color="danger"
-                      variant="flat"
-                      size="sm"
-                      startContent={
-                        <Icon
-                          icon="lucide:alert-triangle"
-                          className="text-xs"
-                        />
-                      }
-                    >
-                      {client.missingExternalIds.length} missing
-                    </Chip>
-                  </div>
-                ) : (
-                  <Chip color="success" variant="flat" size="sm">
-                    Complete
-                  </Chip>
-                )}
               </TableCell>
               <TableCell>
                 {client.missingExternalIds.includes("holded") ? (
