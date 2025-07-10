@@ -1,6 +1,6 @@
 from src.api.services.models.service import Service  #  noqa
 from datetime import date
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlmodel import Session, select
 from src.api.common.constants.services import ServiceContractStatus
 from src.api.invoices.schemas.invoice import InvoiceBase
@@ -40,18 +40,57 @@ class ServiceContractService:
         """Get all contracts for a client"""
         return self.db.exec(select(ServiceContract).where(ServiceContract.client_id == client_id)).all()
 
-    def update_contract_amount(self, contract_id: int, aggregated_amount: float = 0.0) -> Optional[ServiceContract]:
-        """Update an contract amount"""
-
-        if not aggregated_amount or aggregated_amount == 0:
-            return None
+    def update_contract_amount(self, contract_id: int, aggregated_amount: float = 0.0, invoice_id: Optional[int] = None) -> Optional[ServiceContract]:
+        """Update a contract amount
+        
+        Args:
+            contract_id: ID of the contract to update
+            aggregated_amount: Amount to add to the contract
+            invoice_id: Optional invoice ID to track which invoices have been processed
+        """
 
         contract = self.db.get(ServiceContract, contract_id)
         if not contract:
             return None
 
+        # Check if this invoice amount has already been added to the contract
+        if invoice_id:
+            # Check if we have any invoices with this ID already linked to this contract
+            from src.api.invoices.models.invoice import Invoice
+            existing_invoice = self.db.exec(
+                select(Invoice).where(
+                    Invoice.id == invoice_id,
+                    Invoice.service_contract_id == contract_id
+                )
+            ).first()
+            
+            if existing_invoice:
+                # This invoice is already linked and its amount should already be in contract_amount
+                # Check if the contract_amount needs to be recalculated
+                total_invoice_amount = sum(inv.total_amount for inv in contract.invoices if inv.service_contract_id == contract_id)
+                
+                # If contract_amount doesn't match total invoice amount, fix it
+                if abs(contract.contract_amount - total_invoice_amount) > 0.01:
+                    print(f'contract_amount_mismatch_fixing', f'contract_{contract_id}', 
+                          f'current_amount_{contract.contract_amount}', f'total_invoices_{total_invoice_amount}')
+                    contract.contract_amount = total_invoice_amount
+                    self.db.add(contract)
+                    self.db.commit()
+                    self.db.refresh(contract)
+                
+                return contract
+
+        # If no aggregated amount to add, return after checking invoice logic
+        if not aggregated_amount or aggregated_amount == 0:
+            return contract
+
         # Update status and corresponding date if contract_amount is changing
+        old_amount = contract.contract_amount
         contract.contract_amount += aggregated_amount
+        
+        print(f'updating_contract_amount', f'contract_{contract_id}', 
+              f'old_amount_{old_amount}', f'added_amount_{aggregated_amount}', 
+              f'new_amount_{contract.contract_amount}')
 
         self.db.add(contract)
         self.db.commit()

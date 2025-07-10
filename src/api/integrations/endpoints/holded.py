@@ -286,7 +286,7 @@ async def sync_invoices_and_clients(
                 else:
                     if new_amount != 0:
                         service_contract = service_contract_service.update_contract_amount(
-                            service_contract.id, new_amount)
+                            service_contract.id, new_amount, invoice_id=invoice.id)
                     if round(service_contract.contract_amount, 0) > 0 and service_contract.status != ServiceContractStatus.ACTIVE:
                         service_contract_service.update_contract_status(
                             service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.ACTIVE))

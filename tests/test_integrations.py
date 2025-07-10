@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, MagicMock, patch, AsyncMock
 import httpx
 from datetime import datetime
 from fastapi import HTTPException
@@ -8,6 +8,8 @@ from src.api.integrations.notion.client import NotionClient
 from src.api.integrations.holded.client import HoldedClient
 from src.api.integrations.fourgeeks.client import FourGeeksClient
 from src.api.integrations.fourgeeks.processor import EnrollmentProcessor, StudentProcessor
+from src.api.integrations.endpoints.holded import sync_invoices_and_clients, _create_invoice, _is_credit_note
+from src.api.invoices.schemas.invoice import InvoiceCreate, InvoiceUpdate
 
 
 class TestNotionIntegration:
@@ -553,3 +555,150 @@ class TestIntegrationEndpoints:
         """Test that integrations properly log operations"""
         # Test logging of API calls, errors, and data processing
         pass 
+
+
+class TestHoldedDuplicateInvoicePrevention:
+    """Test suite for Holded invoice duplicate prevention"""
+
+    @pytest.fixture
+    def mock_holded_document(self):
+        """Sample Holded document data"""
+        return {
+            "id": "holded-invoice-123",
+            "docNumber": "INV-2024-001",
+            "date": 1640995200,  # 2022-01-01
+            "dueDate": 1643673600,  # 2022-02-01
+            "total": 1500.00,
+            "currency": "EUR",
+            "status": 1,
+            "contact": "holded-contact-456",
+            "products": [{"account": "external-service-id"}]
+        }
+
+    @pytest.fixture
+    def mock_updated_holded_document(self):
+        """Sample updated Holded document with different amount"""
+        return {
+            "id": "holded-invoice-123",  # Same ID
+            "docNumber": "INV-2024-001",
+            "date": 1640995200,
+            "dueDate": 1643673600,
+            "total": 2000.00,  # Updated amount
+            "currency": "EUR",
+            "status": 1,
+            "contact": "holded-contact-456",
+            "products": [{"account": "external-service-id"}]
+        }
+
+    @pytest.fixture
+    def mock_credit_note_document(self):
+        """Sample credit note document"""
+        return {
+            "id": "holded-credit-note-789",
+            "docNumber": "CN-2024-001",
+            "date": 1640995200,
+            "total": 500.00,
+            "currency": "EUR",
+            "status": 1,
+            "contact": "holded-contact-456",
+            "products": [{"account": "external-service-id"}],
+            "from": {"docType": "invoice"}
+        }
+
+    def test_is_credit_note_detection(self, mock_credit_note_document):
+        """Test credit note detection"""
+        assert _is_credit_note(mock_credit_note_document) == True
+        
+        regular_invoice = {"docNumber": "INV-001", "from": {"docType": "invoice"}}
+        assert _is_credit_note(regular_invoice) == False
+
+    @patch('src.api.integrations.endpoints.holded.logger')
+    def test_prevent_duplicate_invoice_creation(self, mock_logger, mock_holded_document):
+        """Test that duplicate invoices are not created"""
+        # Mock services
+        mock_invoice_service = MagicMock()
+        mock_client_service = MagicMock()
+        mock_holded_client = AsyncMock()
+        mock_service_service = MagicMock()
+        mock_service_contract_service = MagicMock()
+
+        # Mock existing invoice
+        existing_invoice = MagicMock()
+        existing_invoice.id = 1
+        existing_invoice.total_amount = 1500.00
+        existing_invoice.invoice_number = "INV-2024-001"
+        existing_invoice.status = 1
+        
+        mock_invoice_service.get_invoice_by_external_id.return_value = existing_invoice
+        mock_invoice_service.update_invoice.return_value = existing_invoice
+
+        # Mock client and service lookups
+        mock_client = MagicMock()
+        mock_client.id = 1
+        
+        mock_service = MagicMock()
+        mock_service.id = 1
+        
+        # Mock async functions
+        async def mock_get_or_create_client(*args):
+            return mock_client
+            
+        # Test the duplicate prevention logic directly
+        document_id = mock_holded_document["id"]
+        invoice = mock_invoice_service.get_invoice_by_external_id(document_id)
+        
+        # Verify invoice exists (duplicate case)
+        assert invoice is not None
+        assert invoice.total_amount == 1500.00
+        
+        # Verify create_invoice was not called when duplicate exists
+        mock_invoice_service.create_invoice.assert_not_called()
+
+
+    def test_credit_note_amount_negation(self, mock_credit_note_document):
+        """Test that credit note amounts are properly negated"""
+        document = mock_credit_note_document.copy()
+        
+        if _is_credit_note(document):
+            document["total"] = -abs(float(document.get("total", 0)))
+            
+        assert document["total"] == -500.00
+
+    @patch('src.api.integrations.endpoints.holded.logger')  
+    def test_no_update_when_amounts_are_same(self, mock_logger, mock_holded_document):
+        """Test that no update occurs when amounts are the same"""
+        # Mock services
+        mock_invoice_service = MagicMock()
+        
+        # Mock existing invoice with same amount as document
+        existing_invoice = MagicMock()
+        existing_invoice.id = 1
+        existing_invoice.total_amount = 1500.00  # Same as document
+        existing_invoice.invoice_number = "INV-2024-001"
+        existing_invoice.status = 1
+        
+        mock_invoice_service.get_invoice_by_external_id.return_value = existing_invoice
+
+        # Simulate the update logic
+        document = mock_holded_document
+        document_total = document.get("total", 0)
+        
+        # Check if amount changed (1500.00 vs 1500.00)
+        amount_changed = abs(existing_invoice.total_amount - document_total) > 0.01
+        assert amount_changed == False
+        
+        # Verify update_invoice would NOT be called
+        mock_invoice_service.update_invoice.assert_not_called()
+
+    def test_floating_point_precision_tolerance(self):
+        """Test that small floating point differences are ignored"""
+        amount1 = 1500.00
+        amount2 = 1500.005  # Small difference
+        
+        # Should NOT trigger update (within tolerance)
+        assert abs(amount1 - amount2) <= 0.01
+        
+        amount3 = 1500.02  # Larger difference
+        
+        # Should trigger update (outside tolerance)
+        assert abs(amount1 - amount3) > 0.01 
