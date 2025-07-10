@@ -1,7 +1,7 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session
-from api.common.utils.database import get_db
+from src.api.common.utils.database import get_db
 from src.api.clients.schemas.client import ClientCreate, ClientRead, ClientUpdate, ClientExternalIdCreate, ClientExternalIdRead, ClientMissingExternalId
 from src.api.clients.services.client_service import ClientService
 

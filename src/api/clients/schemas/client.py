@@ -61,6 +61,10 @@ class ClientExternalIdRead(ClientExternalIdBase):
     id: int
     client_id: int
     external_id: str  # This will be decrypted from the model
-    created_at: datetime
-    updated_at: datetime
 
+
+class ClientMissingExternalId(BaseModel):
+    id: int
+    name: str
+    identifier: str
+    system: str

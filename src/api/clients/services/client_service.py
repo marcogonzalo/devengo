@@ -1,10 +1,16 @@
 from typing import List, Optional, Dict
 from sqlmodel import Session, select
+from sqlalchemy.orm import selectinload
 from src.api.clients.models.client import Client, ClientExternalId
 from src.api.clients.schemas.client import ClientCreate, ClientUpdate, ClientExternalIdCreate
 
 
 class ClientService:
+    """Service class for managing client operations and external ID tracking."""
+    
+    # Define the external ID systems we track
+    from src.api.integrations.endpoints import TRACKED_SYSTEMS
+    
     def __init__(self, db: Session):
         self.db = db
 
@@ -33,8 +39,54 @@ class ClientService:
         return None
 
     def get_clients(self, skip: int = 0, limit: int = 100) -> List[Client]:
-        """Get a list of clients"""
-        return self.db.exec(select(Client).offset(skip).limit(limit)).all()
+        """
+        Get a list of clients sorted by multiple criteria:
+        1. Number of missing external IDs (most missing first)
+        2. Name alphabetically (A to Z)
+        """
+        # Get all clients with their external IDs loaded
+        all_clients = self.db.exec(
+            select(Client).options(selectinload(Client.external_ids))
+        ).all()
+        
+        # Create a list to store clients with their missing ID counts
+        clients_with_counts = []
+        
+        for client in all_clients:
+            missing_count = self._count_missing_external_ids(client, self.TRACKED_SYSTEMS)
+            clients_with_counts.append((client, missing_count))
+        
+        # Sort by two criteria:
+        # 1. Missing count (descending - most missing first)
+        # 2. Name (ascending - A to Z)
+        clients_with_counts.sort(
+            key=lambda client_data: (
+                -client_data[1],  # Negative missing count for descending order
+                (client_data[0].name or '').lower()  # Name in lowercase for case-insensitive A-Z sort
+            )
+        )
+        
+        # Extract just the clients and apply pagination
+        sorted_clients = [client for client, _ in clients_with_counts]
+        
+        return sorted_clients[skip:skip + limit]
+    
+    def _count_missing_external_ids(self, client: Client, systems: List[str]) -> int:
+        """
+        Count how many external IDs are missing for a client.
+        
+        Args:
+            client: The client to check
+            systems: List of system names to check for external IDs
+            
+        Returns:
+            Number of missing external IDs
+        """
+        missing_count = 0
+        for system in systems:
+            if not client.get_external_id(system):
+                missing_count += 1
+        return missing_count
 
     def get_clients_with_no_external_id(self, system: str) -> List[Client]:
         """Get a list of clients that don't have an external ID for a specific system"""
@@ -117,12 +169,18 @@ class ClientService:
         )).first()
 
     def get_clients_missing_external_id(self) -> List[dict]:
-        # Example: define the systems you care about
-        systems = ["holded", "fourgeeks", "notion"]
-        all_clients = self.db.exec(select(Client)).all()
+        """
+        Get a list of clients with missing external IDs for tracked systems.
+        
+        Returns:
+            List of dictionaries containing client info and missing system
+        """
+        all_clients = self.db.exec(
+            select(Client).options(selectinload(Client.external_ids))
+        ).all()
         result = []
         for client in all_clients:
-            for system in systems:
+            for system in self.TRACKED_SYSTEMS:
                 if not client.get_external_id(system):
                     result.append({
                         "id": client.id,
