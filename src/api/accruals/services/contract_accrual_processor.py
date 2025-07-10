@@ -1114,6 +1114,12 @@ class ContractAccrualProcessor:
             print('no_remaining_amount_to_accrue_skipping_accrual',
                   contract_accrual.remaining_amount_to_accrue)
             return 0.0
+        
+        # Skip if portion is 0 (no overlap, postponed period, etc.)
+        if portion == 0.0:
+            print('zero_portion_skipping_accrual_period_creation',
+                  f'contract_{contract.id}', f'period_{period.id}', f'month_{target_month}')
+            return 0.0
 
         # Validate: Check if AccruedPeriod already exists for this month and period to prevent double-accrual
         existing_accrual = self.db.query(AccruedPeriod).filter(

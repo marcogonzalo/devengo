@@ -12,6 +12,8 @@ from src.api.services.models.service_contract import ServiceContract
 from src.api.services.models.service_period import ServicePeriod
 from src.api.services.models.service import Service
 from src.api.clients.models.client import Client
+from src.api.common.constants.services import ServiceContractStatus
+from src.api.accruals.constants.accruals import ContractAccrualStatus
 
 
 class AccrualReportsService:
@@ -55,10 +57,13 @@ class AccrualReportsService:
             .outerjoin(ServiceContract.periods)  # Left join to include contracts without periods
             .outerjoin(ServiceContract.contract_accrual)  # Left join to include contracts without contract accruals
             .filter(
-                # Include if:
-                # 1. Contract has at least one accrued period in the date range, OR
-                # 2. Contract is pending to be accrued and was created before the end of the date range
+                # Include if any of these conditions are met:
+                
+                # Condition 1: Contract has at least one accrued period in the date range
                 (ContractAccrual.id.in_(accrued_contract_ids_subquery)) |
+                
+                # Condition 2: Contract has contract_date before or during end_date AND
+                # (contract is active OR contract accrual is not completed)
                 (
                     # Contract was created before end of date range AND
                     (ServiceContract.contract_date <= end_date) &
@@ -71,18 +76,20 @@ class AccrualReportsService:
                 )
             )
             .order_by(
-                # Group by accrual status:
-                # 1. Cases with accrued periods in the date range (accrued contracts)
-                # 2. Cases with incomplete accruals but no accrued periods in date range (accruable contracts)
-                # 3. Cases without contract accruals (new contracts)
+                # Group by accrual status and activity:
+                # 1. Contracts with accrued periods in the date range (priority)
+                # 2. Active contracts 
+                # 3. Contracts with incomplete accruals
+                # 4. Contracts without accruals yet
                 case(
                     (ContractAccrual.id.in_(accrued_contract_ids_subquery), 1),
+                    (ServiceContract.status == ServiceContractStatus.ACTIVE, 2),
                     (
-                        (ContractAccrual.id.notin_(accrued_contract_ids_subquery)) &
-                        (ContractAccrual.accrual_status != 'COMPLETED'), 2
+                        (ContractAccrual.id.isnot(None)) &
+                        (ContractAccrual.accrual_status != ContractAccrualStatus.COMPLETED), 3
                     ),
-                    (ContractAccrual.id.is_(None), 3),
-                    else_=4  # Fallback for any edge cases
+                    (ContractAccrual.id.is_(None), 4),
+                    else_=5  # Fallback for any other cases
                 ),
                 Client.name,
                 ServiceContract.contract_date,
@@ -122,10 +129,47 @@ class AccrualReportsService:
         # Organize accruals by contract_accrual_id, service_period_id, and month
         # service_period_id can be None for accruals without associated periods
         # contract_accrual_id should always exist for accrued periods, but handling defensively
+        
+        # First pass: organize accruals normally
         for accrual in accruals:
             month_key = f"{accrual.accrual_date.year}-{accrual.accrual_date.month:02d}"
             key = (accrual.contract_accrual_id, accrual.service_period_id)
             accruals_by_contract_period[key][month_key] = accrual.accrued_amount
+        
+        # Second pass: redistribute NULL service_period_id accruals to their corresponding periods
+        # This handles final accruals (status=ENDED, accrual_portion=1.0) that have service_period_id=NULL
+        null_period_accruals = []
+        for accrual in accruals:
+            if accrual.service_period_id is None:
+                null_period_accruals.append(accrual)
+        
+        for null_accrual in null_period_accruals:
+            # Find the service period that contains this accrual date for this contract
+            contract_accrual = self.db.get(ContractAccrual, null_accrual.contract_accrual_id)
+            if contract_accrual:
+                # Look for service periods that overlap with this accrual date
+                overlapping_periods = self.db.query(ServicePeriod).filter(
+                    ServicePeriod.contract_id == contract_accrual.contract_id,
+                    ServicePeriod.start_date <= null_accrual.accrual_date,
+                    ServicePeriod.end_date >= null_accrual.accrual_date
+                ).all()
+                
+                if overlapping_periods:
+                    # Move the accrual amount from NULL period to the correct period
+                    target_period = overlapping_periods[0]
+                    month_key = f"{null_accrual.accrual_date.year}-{null_accrual.accrual_date.month:02d}"
+                    
+                    # Remove from NULL key
+                    null_key = (null_accrual.contract_accrual_id, None)
+                    if null_key in accruals_by_contract_period and month_key in accruals_by_contract_period[null_key]:
+                        amount = accruals_by_contract_period[null_key][month_key]
+                        del accruals_by_contract_period[null_key][month_key]
+                        
+                        # Add to correct period key
+                        correct_key = (null_accrual.contract_accrual_id, target_period.id)
+                        if correct_key not in accruals_by_contract_period:
+                            accruals_by_contract_period[correct_key] = {}
+                        accruals_by_contract_period[correct_key][month_key] = accruals_by_contract_period[correct_key].get(month_key, 0.0) + amount
 
         # Step 3: Organize data for CSV export
         csv_data = []

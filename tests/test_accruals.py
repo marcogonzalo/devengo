@@ -12,6 +12,8 @@ from src.api.services.models.service_contract import ServiceContract
 from src.api.services.models.service_period import ServicePeriod
 from src.api.clients.models.client import Client
 from src.api.invoices.models.invoice import Invoice
+from src.api.accruals.models.contract_accrual import ContractAccrual
+from src.api.accruals.constants.accruals import ContractAccrualStatus
 
 
 class TestContractAccrualProcessor:
@@ -317,6 +319,92 @@ class TestContractAccrualProcessor:
             # Note: This depends on the actual logging implementation
             # mock_print.assert_called()
 
+    @pytest.mark.asyncio
+    async def test_zero_amount_accrued_periods_not_created(self, processor, test_session, test_data_factory):
+        """Test that AccruedPeriods with amount = 0.0 are not created for postponed periods outside their valid range."""
+        # Create client and service
+        client = test_data_factory.create_client(test_session)
+        service = test_data_factory.create_service(test_session)
+        
+        # Create contract
+        contract = ServiceContract(
+            client_id=client.id,
+            service_id=service.id,
+            contract_amount=4800.0,
+            contract_date=date(2024, 11, 1),
+            status=ServiceContractStatus.ACTIVE
+        )
+        test_session.add(contract)
+        test_session.commit()
+        test_session.refresh(contract)
+        
+        # Create service period that gets postponed
+        period = ServicePeriod(
+            name="test-period",
+            start_date=date(2024, 12, 1),
+            end_date=date(2025, 4, 30),
+            status=ServicePeriodStatus.POSTPONED,
+            status_change_date=date(2025, 1, 15),  # Postponed mid-January
+            contract_id=contract.id
+        )
+        test_session.add(period)
+        test_session.commit()
+        
+        # Process December 2024 (should create AccruedPeriod)
+        result_dec = await processor._process_contract(contract, date(2024, 12, 1))
+        assert result_dec.status.value == "SUCCESS"
+        
+        # Process January 2025 (should create AccruedPeriod until postponement date)
+        result_jan = await processor._process_contract(contract, date(2025, 1, 1))
+        assert result_jan.status.value == "SUCCESS"
+        
+        # Process February 2025 (should NOT create AccruedPeriod - portion = 0.0)
+        result_feb = await processor._process_contract(contract, date(2025, 2, 1))
+        assert result_feb.status.value == "SUCCESS"
+        
+        # Process March 2025 (should NOT create AccruedPeriod - portion = 0.0)
+        result_mar = await processor._process_contract(contract, date(2025, 3, 1))
+        assert result_mar.status.value == "SUCCESS"
+        
+        # Verify AccruedPeriods created
+        contract_accrual = test_session.query(ContractAccrual).filter(
+            ContractAccrual.contract_id == contract.id
+        ).first()
+        assert contract_accrual is not None
+        
+        accrued_periods = test_session.query(AccruedPeriod).filter(
+            AccruedPeriod.contract_accrual_id == contract_accrual.id
+        ).all()
+        
+        # Should only have 2 AccruedPeriods (December and January)
+        assert len(accrued_periods) == 2
+        
+        # Verify dates and amounts
+        periods_by_date = {ap.accrual_date: ap for ap in accrued_periods}
+        
+        # December 2024 should exist with positive amount
+        assert date(2024, 12, 1) in periods_by_date
+        assert periods_by_date[date(2024, 12, 1)].accrued_amount > 0
+        
+        # January 2025 should exist with positive amount
+        assert date(2025, 1, 1) in periods_by_date
+        assert periods_by_date[date(2025, 1, 1)].accrued_amount > 0
+        
+        # February and March 2025 should NOT exist
+        assert date(2025, 2, 1) not in periods_by_date
+        assert date(2025, 3, 1) not in periods_by_date
+        
+        # Verify no AccruedPeriod exists with amount = 0.0
+        zero_amount_periods = [ap for ap in accrued_periods if ap.accrued_amount == 0.0]
+        assert len(zero_amount_periods) == 0, "No AccruedPeriods with amount = 0.0 should exist"
+        
+        # Verify contract totals consistency
+        total_accrued_in_periods = sum(ap.accrued_amount for ap in accrued_periods)
+        assert abs(contract_accrual.total_amount_accrued - total_accrued_in_periods) < 0.01
+        
+        print(f"✅ Contract {contract.id} has {len(accrued_periods)} AccruedPeriods, none with amount = 0.0")
+        print(f"✅ Total accrued: {contract_accrual.total_amount_accrued}, Sum of periods: {total_accrued_in_periods}")
+
 
 class TestAccrualReportsService:
     """Test AccrualReportsService class"""
@@ -513,6 +601,148 @@ class TestAccrualReportsService:
                     date(2024, 3, 1),
                     date(2024, 1, 1)
                 )
+
+    def test_csv_export_includes_all_required_contracts(self, reports_service, test_session, test_data_factory):
+        """Test that CSV export includes all contracts according to requirements"""
+        # Create test data
+        client1 = test_data_factory.create_client(test_session, name="Client with accruals in range")
+        client2 = test_data_factory.create_client(test_session, name="Active client contract before end_date")
+        client3 = test_data_factory.create_client(test_session, name="Active client far before range no accrual")
+        client4 = test_data_factory.create_client(test_session, name="Closed client before end_date incomplete")
+        client5 = test_data_factory.create_client(test_session, name="Closed client before end_date completed")
+        
+        service = test_data_factory.create_service(test_session)
+        
+        # Contract 1: Has accruals in the date range (should be included)
+        contract1 = ServiceContract(
+            client_id=client1.id,
+            service_id=service.id,
+            contract_date=date(2024, 12, 1),  # Before end_date
+            contract_amount=5000.00,
+            status=ServiceContractStatus.CLOSED  # Even if closed, should be included due to accruals
+        )
+        test_session.add(contract1)
+        
+        # Contract 2: Active with contract date before end_date (should be included)
+        contract2 = ServiceContract(
+            client_id=client2.id,
+            service_id=service.id,
+            contract_date=date(2024, 10, 15),  # Before end_date
+            contract_amount=3000.00,
+            status=ServiceContractStatus.ACTIVE
+        )
+        test_session.add(contract2)
+        
+        # Contract 3: Active with contract date far before range, no accrual yet (should be included)
+        contract3 = ServiceContract(
+            client_id=client3.id,
+            service_id=service.id,
+            contract_date=date(2023, 11, 1),  # Far before end_date
+            contract_amount=2000.00,
+            status=ServiceContractStatus.ACTIVE
+        )
+        test_session.add(contract3)
+        
+        # Contract 4: Closed with contract date before end_date, incomplete accrual (should be included)
+        contract4 = ServiceContract(
+            client_id=client4.id,
+            service_id=service.id,
+            contract_date=date(2024, 8, 1),  # Before end_date
+            contract_amount=4000.00,
+            status=ServiceContractStatus.CLOSED
+        )
+        test_session.add(contract4)
+        
+        # Contract 5: Closed with contract date before end_date, completed accrual (should NOT be included)
+        contract5 = ServiceContract(
+            client_id=client5.id,
+            service_id=service.id,
+            contract_date=date(2024, 9, 1),  # Before end_date
+            contract_amount=1000.00,
+            status=ServiceContractStatus.CLOSED
+        )
+        test_session.add(contract5)
+        
+        test_session.commit()
+        test_session.refresh(contract1)
+        test_session.refresh(contract2)
+        test_session.refresh(contract3)
+        test_session.refresh(contract4)
+        test_session.refresh(contract5)
+        
+        # Create contract accruals
+        accrual1 = ContractAccrual(
+            contract_id=contract1.id,
+            total_amount_to_accrue=5000.00,
+            total_amount_accrued=5000.00,
+            remaining_amount_to_accrue=0.00,
+            total_sessions_to_accrue=100,
+            total_sessions_accrued=100,
+            sessions_remaining_to_accrue=0,
+            accrual_status=ContractAccrualStatus.COMPLETED
+        )
+        
+        accrual4 = ContractAccrual(
+            contract_id=contract4.id,
+            total_amount_to_accrue=4000.00,
+            total_amount_accrued=2000.00,
+            remaining_amount_to_accrue=2000.00,
+            total_sessions_to_accrue=80,
+            total_sessions_accrued=40,
+            sessions_remaining_to_accrue=40,
+            accrual_status=ContractAccrualStatus.ACTIVE
+        )
+        
+        accrual5 = ContractAccrual(
+            contract_id=contract5.id,
+            total_amount_to_accrue=1000.00,
+            total_amount_accrued=1000.00,
+            remaining_amount_to_accrue=0.00,
+            total_sessions_to_accrue=20,
+            total_sessions_accrued=20,
+            sessions_remaining_to_accrue=0,
+            accrual_status=ContractAccrualStatus.COMPLETED
+        )
+        
+        test_session.add_all([accrual1, accrual4, accrual5])
+        test_session.commit()
+        test_session.refresh(accrual1)
+        test_session.refresh(accrual4)
+        test_session.refresh(accrual5)
+        
+        # Create accrued period in range for contract1
+        accrued_period = AccruedPeriod(
+            contract_accrual_id=accrual1.id,
+            accrual_date=date(2025, 1, 1),  # In range
+            accrued_amount=1000.00,
+            accrual_portion=0.2,
+            status="ACTIVE",
+            sessions_in_period=20,
+            total_contract_amount=5000.00
+        )
+        test_session.add(accrued_period)
+        test_session.commit()
+        
+        # Test the export function
+        start_date = date(2025, 1, 1)
+        end_date = date(2025, 1, 31)
+        
+        export_data = reports_service.get_accruals_export(start_date, end_date)
+        
+        # Extract client names from the export data
+        client_names_in_export = {row['Client'] for row in export_data['data'] if row['Client']}
+        
+        # Verify contracts that SHOULD be included
+        assert "Client with accruals in range" in client_names_in_export, "Contract with accruals in range should be included"
+        assert "Active client contract before end_date" in client_names_in_export, "Active contract with date before end_date should be included"
+        assert "Active client far before range no accrual" in client_names_in_export, "Active contract without accrual should be included"
+        assert "Closed client before end_date incomplete" in client_names_in_export, "Closed contract with incomplete accrual should be included"
+        
+        # Verify contract that should NOT be included
+        assert "Closed client before end_date completed" not in client_names_in_export, "Closed contract with completed accrual should NOT be included"
+        
+        # Verify the export contains expected number of unique contracts (4 should be included)
+        assert len(client_names_in_export) == 4, f"Expected 4 contracts, found {len(client_names_in_export)}: {client_names_in_export}"
 
 
 class TestAccrualModels:
