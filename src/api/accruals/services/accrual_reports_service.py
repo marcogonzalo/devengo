@@ -1,5 +1,5 @@
 from datetime import date
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from sqlalchemy.orm import Session
 from sqlalchemy import case
 from collections import defaultdict
@@ -241,9 +241,13 @@ class AccrualReportsService:
         output.seek(0)
         return output
     
-    def get_dashboard_summary(self) -> Dict[str, Any]:
+    def get_dashboard_summary(self, year: Optional[int] = None) -> Dict[str, Any]:
         """
         Get dashboard summary statistics for the accruals overview.
+        
+        Args:
+            year: Optional year to filter by. If None, returns all data.
+                  If provided, returns data for that specific year only.
         
         Returns:
             Dictionary containing:
@@ -252,7 +256,7 @@ class AccrualReportsService:
             - accrued_amount: Total amount already accrued
             - pending_amount: Total amount pending to accrue
         """
-        # Get all service contracts with their accruals
+        # Build the base query
         contracts_query = (
             self.db.query(ServiceContract, ContractAccrual)
             .outerjoin(ServiceContract.contract_accrual)
@@ -262,6 +266,15 @@ class AccrualReportsService:
                 ServiceContractStatus.CLOSED
             ]))
         )
+        
+        # Apply year filter if provided
+        if year is not None:
+            year_start = date(year, 1, 1)
+            year_end = date(year, 12, 31)
+            contracts_query = contracts_query.filter(
+                ServiceContract.contract_date >= year_start,
+                ServiceContract.contract_date <= year_end
+            )
         
         contracts = contracts_query.all()
         

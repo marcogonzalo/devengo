@@ -134,7 +134,20 @@ export interface DashboardSummary {
 // Dashboard API functions
 export const dashboardApi = {
   // Get dashboard summary statistics
-  getSummary: async (): Promise<ApiResponse<DashboardSummary>> => {
-    return apiClient.get<DashboardSummary>('/accruals/dashboard-summary');
+  getSummary: async (year?: number): Promise<ApiResponse<DashboardSummary>> => {
+    const queryParam = year ? `?year=${year}` : '';
+    return apiClient.get<DashboardSummary>(`/accruals/dashboard-summary${queryParam}`);
+  },
+
+  // Get current year dashboard summary statistics
+  getSummaryCurrentYear: async (): Promise<ApiResponse<DashboardSummary>> => {
+    const currentYear = new Date().getFullYear();
+    return dashboardApi.getSummary(currentYear);
+  },
+
+  // Get last year dashboard summary statistics
+  getSummaryLastYear: async (): Promise<ApiResponse<DashboardSummary>> => {
+    const lastYear = new Date().getFullYear() - 1;
+    return dashboardApi.getSummary(lastYear);
   },
 }; 

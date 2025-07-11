@@ -2,6 +2,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, Query, Response, HTTPException, status
 from sqlalchemy.orm import Session
 from fastapi.logger import logger
+from typing import Optional
 
 from src.api.accruals.services.accrual_reports_service import AccrualReportsService
 from src.api.common.utils.database import get_db
@@ -141,19 +142,26 @@ def export_accruals_as_csv(
 
 
 @router.get("/dashboard-summary")
-def get_dashboard_summary(db: Session = Depends(get_db)):
+def get_dashboard_summary(
+    year: Optional[int] = Query(None, description="Year to filter by (e.g., 2024). If not provided, returns all data."),
+    db: Session = Depends(get_db)
+):
     """
     Get dashboard summary statistics for the accruals overview.
+    
+    Args:
+        year: Optional year to filter by. If None, returns all data.
+              If provided, returns data for that specific year only.
     
     Returns:
         - Total contracts count
         - Total contract amounts
-        - Total accrued amounts
+        - Total accrued amounts  
         - Total pending amounts
     """
     try:
         reports_service = AccrualReportsService(db)
-        summary = reports_service.get_dashboard_summary()
+        summary = reports_service.get_dashboard_summary(year)
         
         return {
             "total_contracts": summary["total_contracts"],
