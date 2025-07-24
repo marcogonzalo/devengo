@@ -7,7 +7,13 @@ from src.api.integrations.fourgeeks.log_error import log_enrollment_error
 from src.api.common.constants.services import ServicePeriodStatus, map_educational_status
 from src.api.clients.services.client_service import ClientService
 from src.api.services.services.service_period_service import ServicePeriodService
+from src.api.services.services.service_service import ServiceService
 from src.api.services.schemas.service_period import ServicePeriodCreate
+from src.api.services.utils import (
+    get_program_type_from_cohort_slug, 
+    get_program_type_from_service_name,
+    validate_cohort_service_compatibility
+)
 from src.api.common.utils.datetime import get_date
 
 
@@ -22,14 +28,16 @@ def _adjust_start_date_to_service(start_date_str: str | None, cohort_slug: str) 
 
 
 class EnrollmentProcessor:
-    def __init__(self, period_service: ServicePeriodService, client_service: ClientService):
+    def __init__(self, period_service: ServicePeriodService, client_service: ClientService, service_service: ServiceService):
         self.period_service = period_service
         self.client_service = client_service
+        self.service_service = service_service
         self.stats = {
             "created": 0,
             "updated": 0,
             "skipped": 0,
             "errors": 0,
+            "compatibility_errors": 0,
             "error_details": []
         }
 
@@ -41,6 +49,11 @@ class EnrollmentProcessor:
                 return
 
             cohort_slug = cohort.get("slug")
+            
+            # Validate cohort-service compatibility
+            if not self._validate_cohort_service_compatibility(cohort_slug, contract_id):
+                return
+
             start_date = cohort.get("kickoff_date")
             end_date = cohort.get("ending_date")
 
@@ -82,6 +95,59 @@ class EnrollmentProcessor:
             )
         self.stats["skipped"] += 1
         return False
+
+    def _validate_cohort_service_compatibility(self, cohort_slug: str, contract_id: int) -> bool:
+        """
+        Validate that the cohort program type matches the service contract program type
+        """
+        try:
+            # Get the service contract and its service
+            contract = self.service_service.get_contract(contract_id)
+            if not contract:
+                self.stats["error_details"].append(
+                    f"Contract {contract_id} not found for cohort {cohort_slug}"
+                )
+                self.stats["compatibility_errors"] += 1
+                return False
+
+            service = self.service_service.get_service(contract.service_id)
+            if not service:
+                self.stats["error_details"].append(
+                    f"Service {contract.service_id} not found for contract {contract_id}"
+                )
+                self.stats["compatibility_errors"] += 1
+                return False
+
+            # Get program types
+            cohort_program_type = get_program_type_from_cohort_slug(cohort_slug)
+            service_program_type = service.program_type or get_program_type_from_service_name(service.name)
+
+            # Validate compatibility
+            if not validate_cohort_service_compatibility(cohort_slug, service_program_type):
+                error_msg = (
+                    f"Cohort-Service compatibility error: "
+                    f"Cohort '{cohort_slug}' (program: {cohort_program_type}) "
+                    f"incompatible with service '{service.name}' (program: {service_program_type}) "
+                    f"for contract {contract_id}"
+                )
+                self.stats["error_details"].append(error_msg)
+                self.stats["compatibility_errors"] += 1
+                logger.warning(error_msg)
+                return False
+
+            logger.info(
+                f"Cohort-Service compatibility validated: "
+                f"Cohort '{cohort_slug}' ({cohort_program_type}) "
+                f"compatible with service '{service.name}' ({service_program_type})"
+            )
+            return True
+
+        except Exception as e:
+            error_msg = f"Error validating cohort-service compatibility: {str(e)}"
+            self.stats["error_details"].append(error_msg)
+            self.stats["compatibility_errors"] += 1
+            logger.error(error_msg)
+            return False
 
     def _process_period(
         self,
