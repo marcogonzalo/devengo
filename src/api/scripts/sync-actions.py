@@ -308,7 +308,6 @@ async def perform_accruals(client, monthly_timestamps):
             )
             response.raise_for_status()
             result = response.json()
-            print('accrual_result', result)
             formatted_output = format_result_output(result, "accruals", f"Month: {accrual_date}")
             logger.info(f"Accruals for {accrual_date} completed:\n{formatted_output}")
             total_results["months_processed"] += 1
@@ -325,6 +324,9 @@ async def perform_accruals(client, monthly_timestamps):
         except httpx.HTTPStatusError as e:
             logger.error(f"❌ HTTP error occurred during accruals for {accrual_date}: {e}")
             logger.error(f"Response content: {e.response.text}")
+            total_results["total_errors"] += 1
+        except httpx.TimeoutException as e:
+            logger.error(f"❌ Timeout error occurred during accruals for {accrual_date}: {e}")
             total_results["total_errors"] += 1
         except Exception as e:
             logger.error(f"❌ An error occurred during accruals for {accrual_date}: {e}")
@@ -348,7 +350,7 @@ async def main(from_step: str = None, year: int = 2024, start_date: str = None, 
         monthly_timestamps = generate_monthly_timestamps_from_range(start_dt, end_dt)
     else:
         monthly_timestamps = generate_monthly_timestamps(year)
-    async with httpx.AsyncClient(timeout=300.0) as client:
+    async with httpx.AsyncClient(timeout=600.0) as client:
         start_index = 0
         if from_step:
             if from_step == "accruals":
