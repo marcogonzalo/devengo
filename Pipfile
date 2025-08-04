@@ -11,6 +11,7 @@ httpx = "*"
 cryptography = "*"
 psycopg2-binary = "*"
 python-dateutil = "*"
+pytest-asyncio = "*"
 
 [dev-packages]
 debugpy = "*"

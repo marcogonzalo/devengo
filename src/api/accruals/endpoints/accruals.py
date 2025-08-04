@@ -141,6 +141,57 @@ def export_accruals_as_csv(
     )
 
 
+
+@router.get("/available-years")
+def get_available_years(db: Session = Depends(get_db)):
+    """
+    Get all available years that have service contracts.
+    
+    Returns:
+        List of years sorted from current year to oldest
+    """
+    try:
+        reports_service = AccrualReportsService(db)
+        years = reports_service.get_available_years()
+        
+        return {
+            "years": years
+        }
+    except Exception as e:
+        logger.error(f"Error getting available years: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get available years: {str(e)}"
+        )
+
+
+@router.get("/monthly-accruals/{year}")
+def get_monthly_accruals(
+    year: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Get monthly accrual amounts for a specific year.
+    
+    Args:
+        year: Year to get monthly data for
+        
+    Returns:
+        Monthly accrual data with totals
+    """
+    try:
+        reports_service = AccrualReportsService(db)
+        monthly_data = reports_service.get_monthly_accruals(year)
+        
+        return monthly_data
+    except Exception as e:
+        logger.error(f"Error getting monthly accruals for year {year}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get monthly accruals for year {year}: {str(e)}"
+        )
+
+
 @router.get("/dashboard-summary")
 def get_dashboard_summary(
     year: Optional[int] = Query(None, description="Year to filter by (e.g., 2024). If not provided, returns all data."),

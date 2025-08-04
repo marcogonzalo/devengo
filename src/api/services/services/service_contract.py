@@ -92,6 +92,31 @@ class ServiceContractService:
               f'old_amount_{old_amount}', f'added_amount_{aggregated_amount}', 
               f'new_amount_{contract.contract_amount}')
 
+        # Update contract accrual amounts when contract amount changes
+        # This ensures that new invoices are properly included in accrual calculations
+        if hasattr(contract, 'contract_accrual') and contract.contract_accrual and aggregated_amount != 0:
+            contract_accrual = contract.contract_accrual
+            print(f'updating_contract_accrual_amounts', f'contract_{contract_id}',
+                  f'old_total_to_accrue_{contract_accrual.total_amount_to_accrue}',
+                  f'old_remaining_to_accrue_{contract_accrual.remaining_amount_to_accrue}',
+                  f'adding_amount_{aggregated_amount}')
+            
+            # Add the new amount to both total and remaining amounts
+            # This ensures new invoices are included in future accrual processing
+            contract_accrual.total_amount_to_accrue += aggregated_amount
+            contract_accrual.remaining_amount_to_accrue += aggregated_amount
+            
+            # Ensure accrual status remains ACTIVE if we're adding positive amounts
+            # (don't change status for credit notes/negative amounts)
+            if aggregated_amount > 0 and contract_accrual.accrual_status != 'ACTIVE':
+                contract_accrual.accrual_status = 'ACTIVE'
+                print(f'reactivating_contract_accrual', f'contract_{contract_id}')
+            
+            self.db.add(contract_accrual)
+            print(f'updated_contract_accrual_amounts', f'contract_{contract_id}',
+                  f'new_total_to_accrue_{contract_accrual.total_amount_to_accrue}',
+                  f'new_remaining_to_accrue_{contract_accrual.remaining_amount_to_accrue}')
+
         self.db.add(contract)
         self.db.commit()
         self.db.refresh(contract)

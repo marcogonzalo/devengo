@@ -4,13 +4,15 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, and_, or_, not_, exists
 from sqlalchemy.orm import aliased
 from fastapi.logger import logger
+from dateutil.relativedelta import relativedelta
 
 from src.api.services.models.service_contract import ServiceContract
 from src.api.accruals.models.contract_accrual import ContractAccrual
 from src.api.services.models.service_period import ServicePeriod
 from src.api.accruals.models.accrued_period import AccruedPeriod
+from src.api.services.models.service import Service
 from src.api.common.constants.services import ServiceContractStatus, ServicePeriodStatus, map_educational_status
-from src.api.accruals.constants.accruals import ContractAccrualStatus
+from src.api.accruals.constants.accruals import ContractAccrualStatus, AccrualTimeConstants
 from src.api.accruals.schemas import ContractProcessingResult, ProcessingStatus, SyncActionSummary, SyncActionDetail
 from src.api.common.utils.datetime import get_month_boundaries, get_month_start, get_month_end
 from src.api.integrations.notion.utils import is_educational_status_ended, is_educational_status_dropped, get_client_educational_data
@@ -163,15 +165,52 @@ class ContractAccrualProcessor:
         current_year = target_month.year
         is_recent_contract = ServiceContract.contract_date >= date(current_year, 1, 1)
 
+        # Check if contract has DROPPED periods with status_change_date in target month
+        # This handles cases where client was dropped after service period ended
+        has_dropped_periods_in_month = exists().where(
+            and_(
+                ServicePeriodAlias.contract_id == ServiceContract.id,
+                ServicePeriodAlias.status == ServicePeriodStatus.DROPPED,
+                ServicePeriodAlias.status_change_date >= month_start,
+                ServicePeriodAlias.status_change_date <= month_end
+            )
+        )
+
+        # Check if contract has POSTPONED periods that have exceeded the maximum months limit
+        # This handles cases where postponed periods need to be processed even if they don't overlap
+        has_postponed_periods_exceeded_limit = exists().where(
+            and_(
+                ServicePeriodAlias.contract_id == ServiceContract.id,
+                ServicePeriodAlias.status == ServicePeriodStatus.POSTPONED,
+                ServicePeriodAlias.status_change_date.is_not(None)
+            )
+        )
+
+        # Check if contract is for "ES - ISA - Full-Time" service (special exception)
+        # This handles cases where ISA contracts continue receiving invoices after service completion
+        is_isa_full_time_contract = exists().where(
+            and_(
+                Service.id == ServiceContract.service_id,
+                Service.name == "ES - ISA - Full-Time",
+                ServiceContract.status == ServiceContractStatus.ACTIVE
+            )
+        )
+
         # Exclude ACTIVE contracts that have periods but none overlap with target month
         # Don't exclude CANCELED/CLOSED contracts as they may need final processing
         # Don't exclude recent contracts even if their periods don't overlap
+        # Don't exclude contracts with DROPPED periods that have status_change_date in target month
+        # EXCEPTION: Don't exclude "ES - ISA - Full-Time" contracts even if periods don't overlap
+        # EXCEPTION: Don't exclude contracts with POSTPONED periods (they may need time limit processing)
         exclude_non_overlapping = and_(
             # Only apply to ACTIVE contracts
             ServiceContract.status == ServiceContractStatus.ACTIVE,
             exists().where(ServicePeriodAlias.contract_id == ServiceContract.id),  # Has periods
             not_(has_overlapping_periods),  # But none overlap
-            not_(is_recent_contract)  # And contract is not recent (from current year)
+            not_(is_recent_contract),  # And contract is not recent (from current year)
+            not_(has_dropped_periods_in_month),  # And no dropped periods in target month
+            not_(is_isa_full_time_contract),  # EXCEPTION: Don't exclude ISA Full-Time contracts
+            not_(has_postponed_periods_exceeded_limit)  # EXCEPTION: Don't exclude contracts with postponed periods
         )
 
         # Apply filters: exclude all three conditions
@@ -313,14 +352,13 @@ class ContractAccrualProcessor:
                 )
             else:
                 # Contract resigned - handle based on amount type
+                context = f"contract resignation (>{AccrualTimeConstants.CONTRACT_RECENCY_DAYS} days, no Notion profile)"
                 if contract_accrual.remaining_amount_to_accrue == 0:
                     # Zero-amount contract resignation
-                    context = "resignation (>15 days, no Notion profile)"
                     return self._handle_zero_amount_contract_resignation(contract, contract_accrual, context, target_month)
                 else:
                     # Non-zero amount contract resignation (existing logic)
                     is_negative = contract_accrual.remaining_amount_to_accrue < 0
-                    context = "contract resignation (>15 days, no Notion profile)"
                     return self._handle_contract_resignation(contract, contract_accrual, target_month, context, is_negative)
         else:
             # Found in Notion - check educational status
@@ -395,45 +433,116 @@ class ContractAccrualProcessor:
         overlapping_period = self._find_overlapping_period(
             service_periods, target_month)
 
-        if not overlapping_period:
-            # Special case: For CLOSED contracts with incomplete accruals and ENDED periods
-            # If there are ENDED periods that completed before target month, process them
-            ended_periods = [p for p in service_periods if p.status == ServicePeriodStatus.ENDED]
-            if (ended_periods and contract.status == ServiceContractStatus.CLOSED and 
-                contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and 
-                contract_accrual.remaining_amount_to_accrue > 0):
-                
-                # Find the most recent ended period to process
-                most_recent_ended = max(ended_periods, key=lambda p: p.end_date)
-                print(f'no_overlapping_but_processing_ended_period', f'contract_{contract.id}', 
-                      f'period_{most_recent_ended.id}', f'ended_{most_recent_ended.end_date}')
-                return self._process_ended_service_period(contract, contract_accrual, most_recent_ended, target_month)
+        if overlapping_period:
+            # Process the overlapping period based on its status
+            if self._is_status_change_before_month_end(overlapping_period.status_change_date, target_month):
+                if overlapping_period.status == ServicePeriodStatus.POSTPONED:
+                    return self._process_postponed_service_period(contract, contract_accrual, overlapping_period, target_month)
+                elif overlapping_period.status == ServicePeriodStatus.DROPPED:
+                    return self._process_dropped_service_period(contract, contract_accrual, overlapping_period, target_month)
+                elif overlapping_period.status == ServicePeriodStatus.ENDED:
+                    return self._process_ended_service_period(contract, contract_accrual, overlapping_period, target_month)
             
-            return ContractProcessingResult(
-                contract_id=contract.id,
-                status=ProcessingStatus.SKIPPED,
-                message="No service period overlaps with target month"
-            )
+            # Special case: ENDED/DROPPED periods with status_change_date after end_date
+            # These should be fully accrued in the last month of the service period
+            if self._is_period_naturally_completed(overlapping_period, target_month):
+                if overlapping_period.status == ServicePeriodStatus.ENDED:
+                    return self._process_ended_service_period(contract, contract_accrual, overlapping_period, target_month)
+                elif overlapping_period.status == ServicePeriodStatus.DROPPED:
+                    return self._process_dropped_service_period(contract, contract_accrual, overlapping_period, target_month)
+            
+            # If no special case, process normally
+            return self._process_active_service_period(contract, contract_accrual, overlapping_period, target_month)
 
-        if self._is_status_change_before_month_end(overlapping_period.status_change_date, target_month):
-            if overlapping_period.status == ServicePeriodStatus.POSTPONED:
-                return self._process_postponed_service_period(contract, contract_accrual, overlapping_period, target_month)
-            elif overlapping_period.status == ServicePeriodStatus.DROPPED:
-                return self._process_dropped_service_period(contract, contract_accrual, overlapping_period, target_month)
-            elif overlapping_period.status == ServicePeriodStatus.ENDED:
-                return self._process_ended_service_period(contract, contract_accrual, overlapping_period, target_month)
-        # Special case: ENDED/DROPPED periods with status_change_date after end_date
-        # These should be fully accrued in the last month of the service period
-        if self._is_period_naturally_completed(overlapping_period, target_month):
-            if overlapping_period.status == ServicePeriodStatus.ENDED:
-                return self._process_ended_service_period(contract, contract_accrual, overlapping_period, target_month)
-            elif overlapping_period.status == ServicePeriodStatus.DROPPED:
-                return self._process_dropped_service_period(contract, contract_accrual, overlapping_period, target_month)
-        # If no special case, process normally
-        return self._process_active_service_period(contract, contract_accrual, overlapping_period, target_month)
+        # No overlapping period found - check for special cases
+        # Special case: For CLOSED contracts with incomplete accruals and ENDED periods
+        # If there are ENDED periods that completed before target month, process them
+        ended_periods = [p for p in service_periods if p.status == ServicePeriodStatus.ENDED]
+        if (ended_periods and contract.status == ServiceContractStatus.CLOSED and 
+            contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and 
+            contract_accrual.remaining_amount_to_accrue > 0):
+            
+            # Find the most recent ended period to process
+            most_recent_ended = max(ended_periods, key=lambda p: p.end_date)
+            print(f'no_overlapping_but_processing_ended_period', f'contract_{contract.id}', 
+                  f'period_{most_recent_ended.id}', f'ended_{most_recent_ended.end_date}')
+            return self._process_ended_service_period(contract, contract_accrual, most_recent_ended, target_month)
+        
+        # Handle DROPPED periods with status_change_date in target month and after service period end_date
+        dropped_periods_in_month = [
+            p for p in service_periods 
+            if (p.status == ServicePeriodStatus.DROPPED and 
+                p.status_change_date and
+                self._is_status_change_before_month_end(p.status_change_date, target_month) and
+                contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and
+                contract_accrual.remaining_amount_to_accrue > 0)
+        ]
+        
+        if dropped_periods_in_month:
+            # Process the most recent dropped period (in case of multiple)
+            most_recent_dropped = max(dropped_periods_in_month, key=lambda p: p.status_change_date)
+            print(f'no_overlapping_but_processing_dropped_period', f'contract_{contract.id}', 
+                  f'period_{most_recent_dropped.id}', f'dropped_date_{most_recent_dropped.status_change_date}',
+                  f'remaining_amount_{contract_accrual.remaining_amount_to_accrue}')
+            return self._process_dropped_service_period(contract, contract_accrual, most_recent_dropped, target_month)
+        
+        # Handle POSTPONED periods that have exceeded the maximum months limit
+        # This catches postponed periods that don't overlap with target month but have exceeded the time limit
+        postponed_periods = [
+            p for p in service_periods 
+            if (p.status == ServicePeriodStatus.POSTPONED and 
+                p.status_change_date and
+                contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and
+                contract_accrual.remaining_amount_to_accrue > 0)
+        ]
+        
+        if postponed_periods:
+            # Check if any postponed period has exceeded the maximum months limit
+            for postponed_period in postponed_periods:
+                if (self._has_postponed_period_exceeded_max_months(postponed_period, target_month) and 
+                    self._is_last_service_period(postponed_period, service_periods)):
+                    print(f'no_overlapping_but_processing_postponed_period_exceeded_limit', 
+                          f'contract_{contract.id}', f'period_{postponed_period.id}', 
+                          f'postponement_date_{postponed_period.status_change_date}',
+                          f'remaining_amount_{contract_accrual.remaining_amount_to_accrue}')
+                    return self._process_postponed_service_period(contract, contract_accrual, postponed_period, target_month)
+        
+        # Special case: "ES - ISA - Full-Time" contracts without overlapping periods
+        # These contracts may have new invoices after service completion
+        if self._is_isa_full_time_contract(contract):
+            return await self._process_isa_contract_without_overlapping_periods(contract, contract_accrual, target_month)
+        
+        return ContractProcessingResult(
+            contract_id=contract.id,
+            status=ProcessingStatus.SKIPPED,
+            message="No service period overlaps with target month"
+        )
 
     def _process_active_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> ContractProcessingResult:
         """Process ACTIVE service period - accrue respective portion."""
+        
+        # Resume PAUSED accrual when processing ACTIVE period
+        if contract_accrual.accrual_status == ContractAccrualStatus.PAUSED:
+            print(f'resuming_paused_accrual_for_active_period', 
+                  f'contract_{contract.id}', f'period_{period.id}')
+            self._update_contract_accrual_status(contract_accrual, ContractAccrualStatus.ACTIVE)
+        
+        # Special case: If no sessions remaining but amount remaining, accrue fully
+        # This handles rounding differences between session-based and amount-based calculations
+        if (contract_accrual.sessions_remaining_to_accrue == 0 and 
+            contract_accrual.remaining_amount_to_accrue > 0):
+            
+            print(f'active_period_zero_sessions_remaining_accruing_fully', 
+                  f'contract_{contract.id}', f'remaining_amount_{contract_accrual.remaining_amount_to_accrue}')
+            
+            return self._handle_full_accrual_with_status_update(
+                contract, contract_accrual, target_month,
+                ServiceContractStatus.CLOSED,
+                f"Active period with zero sessions remaining - accrued remaining amount: {contract_accrual.remaining_amount_to_accrue:.2f}",
+                service_period_id=period.id
+            )
+        
+        # Normal processing
         portion = self._calculate_monthly_portion(
             contract_accrual, period, target_month)
         accrued_amount = self._accrue_portion(
@@ -450,6 +559,23 @@ class ContractAccrualProcessor:
         """Process POSTPONED service period - accrue until status change date."""
         # Check if status change date is in this month
         month_start, month_end = get_month_boundaries(target_month)
+        
+        # Check if postponed period has exceeded maximum months limit (only for last service period)
+        service_periods = self._get_contract_service_periods(contract)
+        if (self._has_postponed_period_exceeded_max_months(period, target_month) and 
+            self._is_last_service_period(period, service_periods)):
+            print(f'postponed_period_exceeded_max_months', 
+                  f'contract_{contract.id}', f'period_{period.id}', 
+                  f'postponement_date_{period.status_change_date}', f'target_month_{target_month}')
+            
+            return self._handle_full_accrual_with_status_update(
+                contract,
+                contract_accrual,
+                target_month,
+                ServiceContractStatus.CANCELED,
+                f"Last postponed period exceeded {AccrualTimeConstants.POSTPONED_PERIOD_MAX_MONTHS} months limit - accrued fully and contract canceled",
+                service_period_id=period.id
+            )
         
         if period.status_change_date and month_start <= period.status_change_date <= month_end:
             # Accrue normally until status change date (partial month)
@@ -517,6 +643,26 @@ class ContractAccrualProcessor:
     def _process_ended_service_period(self, contract: ServiceContract, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> ContractProcessingResult:
         """Process ENDED service period - handle proportional vs. full accrual based on period timing."""
         month_start, month_end = get_month_boundaries(target_month)
+        
+        # If period is ENDED and accrual is incomplete, always accrue the full remaining amount
+        # This ensures that ended periods with pending accruals are fully processed regardless of timing
+        if (period.status == ServicePeriodStatus.ENDED and 
+            contract_accrual.accrual_status != ContractAccrualStatus.COMPLETED and 
+            contract_accrual.remaining_amount_to_accrue > 0):
+            
+            remaining_amount = contract_accrual.remaining_amount_to_accrue
+            print(f'ended_period_full_accrual_fix', 
+                  f'contract_{contract.id}', f'period_{period.id}', 
+                  f'remaining_{remaining_amount}', f'target_month_{target_month}')
+            
+            return self._handle_full_accrual_with_status_update(
+                contract,
+                contract_accrual,
+                target_month,
+                ServiceContractStatus.CLOSED,
+                f"Service period ended - accrued full remaining amount: {remaining_amount:.2f}, contract closed",
+                service_period_id=period.id
+            )
         
         # Check if the period's end date is after the target month
         # This indicates that the period was active during the target month
@@ -674,15 +820,14 @@ class ContractAccrualProcessor:
                     message="Recent closed contract without Notion data - possibly missing in CRM"
                 )
             else:
-                # Contract resigned - handle based on amount type  
+                # Contract resigned - handle based on amount type
+                context = f"closed contract resignation (>{AccrualTimeConstants.CONTRACT_RECENCY_DAYS} days, no Notion profile)"  
                 if contract_accrual.remaining_amount_to_accrue == 0:
                     # Zero-amount closed contract resignation
-                    context = "closed contract resignation (>15 days, no Notion profile)"
                     return self._handle_zero_amount_contract_resignation(contract, contract_accrual, context, target_month)
                 else:
                     # Non-zero amount closed contract resignation
                     is_negative = contract_accrual.remaining_amount_to_accrue < 0
-                    context = "closed contract resignation (>15 days, no Notion profile)"
                     return self._handle_contract_resignation(contract, contract_accrual, target_month, context, is_negative)
         else:
             educational_status = map_educational_status(
@@ -800,14 +945,14 @@ class ContractAccrualProcessor:
         )
 
     def _is_contract_recent(self, contract_date: date, target_month: Optional[date] = None) -> bool:
-        """Check if contract date is within 15 days of the target month end."""
+        """Check if contract date is within CONTRACT_RECENCY_DAYS of the target month end."""
         if target_month is None:
             reference_date = date.today()
         else:
             # Use the end of the target month as reference point
             reference_date = get_month_end(target_month)
         
-        return (reference_date - contract_date).days <= 15
+        return (reference_date - contract_date).days <= AccrualTimeConstants.CONTRACT_RECENCY_DAYS
 
     def _is_status_change_before_month_end(self, change_date: Optional[date], target_month: date) -> bool:
         """Check if status change date is before end of target month."""
@@ -818,6 +963,30 @@ class ContractAccrualProcessor:
         month_end = get_month_end(target_month)
 
         return change_date <= month_end
+
+    def _has_postponed_period_exceeded_max_months(self, period: ServicePeriod, target_month: date) -> bool:
+        """Check if a postponed period has exceeded the maximum allowed months."""
+        if not period.status_change_date:
+            return False
+        
+        # Calculate months between postponement date and target month
+        months_diff = relativedelta(target_month, period.status_change_date).months
+        years_diff = relativedelta(target_month, period.status_change_date).years
+        
+        total_months = months_diff + (years_diff * 12)
+        
+        return total_months >= AccrualTimeConstants.POSTPONED_PERIOD_MAX_MONTHS
+
+    def _is_last_service_period(self, period: ServicePeriod, all_periods: List[ServicePeriod]) -> bool:
+        """Check if a period is the last service period of the contract."""
+        if not all_periods:
+            return True
+        
+        # Sort periods by end_date to find the latest one
+        sorted_periods = sorted(all_periods, key=lambda p: p.end_date, reverse=True)
+        last_period = sorted_periods[0]
+        
+        return period.id == last_period.id
 
     def _find_overlapping_period(self, periods: List[ServicePeriod], target_month: date) -> Optional[ServicePeriod]:
         """
@@ -1822,3 +1991,94 @@ class ContractAccrualProcessor:
             status=ProcessingStatus.SUCCESS,
             message=f"Invoice-based accrual - service completed {contract.contract_date}, accrued fully: {accrued_amount:.2f}"
         )
+
+    def _is_isa_full_time_contract(self, contract: ServiceContract) -> bool:
+        """
+        Check if a contract is for "ES - ISA - Full-Time" service.
+        
+        Args:
+            contract: The service contract to check
+            
+        Returns:
+            True if it's an ISA Full-Time contract
+        """
+        return contract.service.name == "ES - ISA - Full-Time"
+
+    async def _process_isa_contract_without_overlapping_periods(self, contract: ServiceContract, contract_accrual: ContractAccrual, target_month: date) -> ContractProcessingResult:
+        """
+        Process ISA Full-Time contracts that don't have overlapping service periods.
+        
+        This handles cases where ISA contracts continue receiving invoices after service completion.
+        
+        Args:
+            contract: The service contract
+            contract_accrual: The contract accrual object
+            target_month: Target month for processing
+            
+        Returns:
+            ContractProcessingResult with processing outcome
+        """
+        print(f'processing_isa_contract_without_overlapping_periods', 
+              f'contract_{contract.id}',
+              f'remaining_amount_{contract_accrual.remaining_amount_to_accrue}',
+              f'target_month_{target_month}')
+        
+        # Check if there are new invoices in the target month
+        month_start, month_end = get_month_boundaries(target_month)
+        recent_invoices = [
+            inv for inv in contract.invoices 
+            if month_start <= inv.invoice_date <= month_end
+        ]
+        
+
+        
+        if not recent_invoices:
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="ISA contract without overlapping periods - no recent invoices in target month"
+            )
+        
+        # Check if accrual is already completed
+        if contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
+            # Recalculate remaining amount based on new invoices
+            total_invoice_amount = sum(inv.amount for inv in recent_invoices)
+            if total_invoice_amount > 0:
+                # Update contract accrual with new remaining amount
+                contract_accrual.remaining_amount_to_accrue = total_invoice_amount
+                contract_accrual.accrual_status = ContractAccrualStatus.ACTIVE
+                
+                print(f'isa_contract_reprocessing_completed', 
+                      f'contract_{contract.id}',
+                      f'new_amount_{total_invoice_amount}')
+                
+                # Process the new amount
+                accrued_amount = self._accrue_remaining(contract, contract_accrual, target_month)
+                
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    status=ProcessingStatus.SUCCESS,
+                    message=f"ISA contract reprocessed - new invoices found, accrued: {accrued_amount:.2f}"
+                )
+            else:
+                return ContractProcessingResult(
+                    contract_id=contract.id,
+                    status=ProcessingStatus.SKIPPED,
+                    message="ISA contract without overlapping periods - no new amount to accrue"
+                )
+        
+        # If accrual is not completed, process normally
+        if contract_accrual.remaining_amount_to_accrue > 0:
+            accrued_amount = self._accrue_remaining(contract, contract_accrual, target_month)
+            
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SUCCESS,
+                message=f"ISA contract processed - accrued remaining amount: {accrued_amount:.2f}"
+            )
+        else:
+            return ContractProcessingResult(
+                contract_id=contract.id,
+                status=ProcessingStatus.SKIPPED,
+                message="ISA contract without overlapping periods - no remaining amount to accrue"
+            )

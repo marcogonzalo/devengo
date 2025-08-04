@@ -224,6 +224,7 @@ def sync_client_enrollments(
     client_service: ClientService = Depends(get_client_service),
     period_service: ServicePeriodService = Depends(get_period_service),
     contract_service: ServiceContractService = Depends(get_contract_service),
+    service_service: ServiceService = Depends(get_service_service),
     fourgeeks_client: FourGeeksClient = Depends(get_fourgeeks_client)
 ) -> dict:
     """
@@ -233,7 +234,7 @@ def sync_client_enrollments(
         dict: Statistics about the synchronization process including counts of
               created, updated, skipped, and failed operations.
     """
-    processor = EnrollmentProcessor(period_service, client_service)
+    processor = EnrollmentProcessor(period_service, client_service, service_service, contract_service)
     academy_ids = os.getenv("4GEEKS_ACADEMY_ID", "6").split(",")
     academy_ids = [int(a.strip()) for a in academy_ids if a.strip()]
 

@@ -169,7 +169,7 @@ class TestDataFactory:
         return client
 
     @staticmethod
-    def create_invoice(session: Session, client_id: int = None, **kwargs) -> Invoice:
+    def create_invoice(session: Session, client_id: int = None, service_contract_id: int = None, **kwargs) -> Invoice:
         """Create a test invoice"""
         if client_id is None:
             client = TestDataFactory.create_client(session)
@@ -178,6 +178,7 @@ class TestDataFactory:
         data = {
             "external_id": "INV-001",
             "client_id": client_id,
+            "service_contract_id": service_contract_id,
             "invoice_number": "2024-001",
             "invoice_date": date(2024, 1, 15),
             "due_date": date(2024, 2, 15),

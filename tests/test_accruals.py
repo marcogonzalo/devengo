@@ -405,6 +405,67 @@ class TestContractAccrualProcessor:
         print(f"✅ Contract {contract.id} has {len(accrued_periods)} AccruedPeriods, none with amount = 0.0")
         print(f"✅ Total accrued: {contract_accrual.total_amount_accrued}, Sum of periods: {total_accrued_in_periods}")
 
+    @pytest.mark.asyncio
+    async def test_isa_full_time_contract_processing(self, processor, test_session, test_data_factory):
+        """Test processing of ISA Full-Time contracts without overlapping periods."""
+        # Create ISA Full-Time service
+        isa_service = test_data_factory.create_service(
+            test_session,
+            name="ES - ISA - Full-Time",
+            service_type="FS"
+        )
+        
+        # Create client
+        client = test_data_factory.create_client(test_session)
+        
+        # Create ISA contract with ended service period
+        contract = ServiceContract(
+            client_id=client.id,
+            service_id=isa_service.id,
+            contract_date=date(2022, 1, 1),
+            contract_amount=5000.00,
+            status=ServiceContractStatus.ACTIVE
+        )
+        test_session.add(contract)
+        test_session.commit()
+        test_session.refresh(contract)
+        
+        # Create ended service period (no overlap with target month)
+        service_period = ServicePeriod(
+            contract_id=contract.id,
+            start_date=date(2022, 1, 1),
+            end_date=date(2022, 12, 31),
+            status=ServicePeriodStatus.ENDED
+        )
+        test_session.add(service_period)
+        
+        # Create recent invoice in target month
+        invoice = test_data_factory.create_invoice(
+            test_session,
+            service_contract_id=contract.id,
+            invoice_date=date(2024, 6, 29),
+            total_amount=210.00
+        )
+        
+        test_session.commit()
+        
+        # Process for June 2024
+        target_month = date(2024, 6, 1)
+        result = await processor.process_all_contracts(target_month)
+        
+        # Should process the ISA contract
+        assert result['total_processed'] > 0
+        assert result['successful'] > 0
+        
+        # Check that the contract was processed
+        processed_contracts = [r for r in result['results'] if r.contract_id == contract.id]
+        assert len(processed_contracts) > 0
+        
+        # Check that the accrual was created/updated
+        contract_accrual = test_session.get(ContractAccrual, contract.id)
+        assert contract_accrual is not None
+        assert contract_accrual.remaining_amount_to_accrue >= 0
+
 
 class TestAccrualReportsService:
     """Test AccrualReportsService class"""

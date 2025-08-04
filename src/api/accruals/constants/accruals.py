@@ -14,3 +14,16 @@ contract_accrual_status_enum = ENUM(
     name='contractaccrualstatus',
     create_type=False  # Important: let migrations handle type creation
 )
+
+# Time-based constants for accrual processing
+class AccrualTimeConstants:
+    """Constants for time-based accrual processing rules."""
+    
+    # Contract recency threshold (days)
+    CONTRACT_RECENCY_DAYS = 15
+    
+    # Postponed service period time limits (months)
+    POSTPONED_PERIOD_MAX_MONTHS = 3
+    
+    # Contract without service periods time limits (months)
+    CONTRACT_WITHOUT_PERIODS_MAX_MONTHS = 3

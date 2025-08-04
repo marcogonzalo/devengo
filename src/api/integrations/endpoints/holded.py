@@ -294,10 +294,12 @@ async def sync_invoices_and_clients(
                         service_contract_service.update_contract_status(
                             service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.CANCELED))
 
-                # Reactivate contract accrual if completed
+                # Handle contract accrual updates for new invoices
+                # Note: For ACTIVE accruals, the update_contract_amount method now handles this automatically
+                # For COMPLETED accruals, we still need to reactivate them manually
                 contract_accrual = getattr(service_contract, 'contract_accrual', None)
-                if contract_accrual and contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED:
-                    # Reactivate accrual only (not contract)
+                if contract_accrual and contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED and new_amount != 0:
+                    # Reactivate completed accrual when new invoices arrive
                     contract_accrual.accrual_status = ContractAccrualStatus.ACTIVE
                     contract_accrual.total_amount_to_accrue += invoice.total_amount
                     contract_accrual.remaining_amount_to_accrue += invoice.total_amount

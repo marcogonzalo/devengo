@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict
 from sqlmodel import Session, select
 from sqlalchemy.orm import selectinload
-from api.common.constants.integrations import ENABLED_INTEGRATIONS
+from src.api.common.constants.integrations import ENABLED_INTEGRATIONS
 from src.api.clients.models.client import Client, ClientExternalId
 from src.api.clients.schemas.client import ClientCreate, ClientUpdate, ClientExternalIdCreate
 from src.api.services.models.service_contract import ServiceContract

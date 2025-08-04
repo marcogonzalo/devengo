@@ -3,6 +3,7 @@ from sqlmodel import Session, select
 from datetime import date
 from src.api.services.models.service import Service
 from src.api.services.schemas.service import ServiceCreate, ServiceUpdate
+from src.api.services.utils import get_service_type_from_service_name
 
 
 class ServiceService:
@@ -13,21 +14,29 @@ class ServiceService:
         """Create a new service"""
         if isinstance(service_data, dict):
             # Handle dictionary input
+            service_name = service_data.get('name')
+            service_type = service_data.get('service_type') or get_service_type_from_service_name(service_name)
+            
             service = Service(
                 external_id=service_data.get('external_id'),
-                name=service_data.get('name'),
+                name=service_name,
                 description=service_data.get('description'),
                 account_identifier=service_data.get('account_identifier'),
+                service_type=service_type,
                 total_sessions=service_data.get('total_sessions', 60),
                 sessions_per_week=service_data.get('sessions_per_week', 3)
             )
         else:
             # Handle Pydantic model input
+            service_name = service_data.name
+            service_type = getattr(service_data, 'service_type', None) or get_service_type_from_service_name(service_name)
+            
             service = Service(
                 external_id=service_data.external_id,
-                name=service_data.name,
+                name=service_name,
                 description=service_data.description,
                 account_identifier=getattr(service_data, 'account_identifier', None),
+                service_type=service_type,
                 total_sessions=getattr(service_data, 'total_sessions', 60),
                 sessions_per_week=getattr(service_data, 'sessions_per_week', 3)
             )
@@ -59,11 +68,19 @@ class ServiceService:
             # Handle dictionary input
             for key, value in service_data.items():
                 setattr(service, key, value)
+            
+            # Auto-update service_type if name changed and service_type not explicitly set
+            if 'name' in service_data and 'service_type' not in service_data:
+                service.service_type = get_service_type_from_service_name(service.name)
         else:
             # Handle Pydantic model input
             service_data_dict = service_data.model_dump(exclude_unset=True)
             for key, value in service_data_dict.items():
                 setattr(service, key, value)
+            
+            # Auto-update service_type if name changed and service_type not explicitly set
+            if 'name' in service_data_dict and 'service_type' not in service_data_dict:
+                service.service_type = get_service_type_from_service_name(service.name)
 
         self.db.add(service)
         self.db.commit()

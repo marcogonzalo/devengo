@@ -9,6 +9,7 @@ class ServiceBase(BaseModel):
     description: Optional[str] = None
     external_id: Optional[str] = None
     account_identifier: Optional[str] = None
+    service_type: Optional[str] = None
     total_sessions: Optional[int] = 60
     sessions_per_week: Optional[int] = 3
     
@@ -36,5 +37,6 @@ class ServiceUpdate(BaseModel):
     sessions_per_week: Optional[int] = None
     account_identifier: Optional[str] = None
     external_id: Optional[str] = None
+    service_type: Optional[str] = None
     
     model_config = ConfigDict(arbitrary_types_allowed=True)
