@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Script to fix cohort-service compatibility issues and populate program_type field
+Script to fix cohort-service compatibility issues and populate service_type field
 """
 
 import sys
@@ -13,9 +13,9 @@ from src.api.services.models.service import Service
 from src.api.services.models.service_contract import ServiceContract
 from src.api.services.models.service_period import ServicePeriod
 from src.api.services.utils import (
-    get_program_type_from_cohort_slug, 
-    get_program_type_from_service_name,
-    validate_cohort_service_compatibility
+    get_service_type_from_service_name, 
+    get_service_type_from_service_name,
+    validate_service_period_compatibility
 )
 from src.api.clients.models.client import Client
 from src.api.accruals.models.accrued_period import AccruedPeriod
@@ -23,9 +23,9 @@ from src.api.accruals.models.contract_accrual import ContractAccrual
 from src.api.invoices.models.invoice import Invoice
 
 
-def populate_service_program_types(db: Session):
+def populate_service_service_types(db: Session):
     """
-    Populate the program_type field for all services based on their names
+    Populate the service_type field for all services based on their names
     """
     print("🔧 Populating service program types...")
     
@@ -33,12 +33,12 @@ def populate_service_program_types(db: Session):
     updated_count = 0
     
     for service in services:
-        program_type = get_program_type_from_service_name(service.name)
-        if program_type != "UNKNOWN":
-            service.program_type = program_type
+        service_type = get_service_type_from_service_name(service.name)
+        if service_type != "UNKNOWN":
+            service.service_type = service_type
             db.add(service)
             updated_count += 1
-            print(f"  ✅ Service '{service.name}' → {program_type}")
+            print(f"  ✅ Service '{service.name}' → {service_type}")
         else:
             print(f"  ⚠️  Service '{service.name}' → UNKNOWN (needs manual review)")
     
@@ -69,17 +69,17 @@ def find_compatibility_issues(db: Session):
         if not cohort_slug:
             continue
             
-        cohort_program_type = get_program_type_from_cohort_slug(cohort_slug)
-        service_program_type = service.program_type or get_program_type_from_service_name(service.name)
+        cohort_service_type = get_service_type_from_service_name(cohort_slug)
+        service_service_type = service.service_type or get_service_type_from_service_name(service.name)
         
-        if cohort_program_type != service_program_type and cohort_program_type != "UNKNOWN":
+        if cohort_service_type != service_service_type and cohort_service_type != "UNKNOWN":
             issues.append({
                 'client_name': client.name,
                 'contract_id': contract.id,
                 'service_name': service.name,
-                'service_program_type': service_program_type,
+                'service_service_type': service_service_type,
                 'cohort_slug': cohort_slug,
-                'cohort_program_type': cohort_program_type,
+                'cohort_service_type': cohort_service_type,
                 'period_id': period.id
             })
     
@@ -87,8 +87,8 @@ def find_compatibility_issues(db: Session):
         print(f"❌ Found {len(issues)} compatibility issues:")
         for issue in issues:
             print(f"  🔴 {issue['client_name']} | Contract {issue['contract_id']}")
-            print(f"      Service: {issue['service_name']} ({issue['service_program_type']})")
-            print(f"      Cohort: {issue['cohort_slug']} ({issue['cohort_program_type']})")
+            print(f"      Service: {issue['service_name']} ({issue['service_service_type']})")
+            print(f"      Cohort: {issue['cohort_slug']} ({issue['cohort_service_type']})")
             print(f"      Period ID: {issue['period_id']}")
             print()
     else:
@@ -108,17 +108,17 @@ def suggest_corrections(db: Session, issues: list):
     print("=" * 50)
     
     for issue in issues:
-        cohort_program_type = issue['cohort_program_type']
+        cohort_service_type = issue['cohort_service_type']
         
         # Find services with matching program type
         matching_services = db.exec(
-            select(Service).where(Service.program_type == cohort_program_type)
+            select(Service).where(Service.service_type == cohort_service_type)
         ).all()
         
         if matching_services:
             print(f"🔧 Client: {issue['client_name']}")
-            print(f"   Problem: Cohort '{issue['cohort_slug']}' ({cohort_program_type}) assigned to")
-            print(f"            Service '{issue['service_name']}' ({issue['service_program_type']})")
+            print(f"   Problem: Cohort '{issue['cohort_slug']}' ({cohort_service_type}) assigned to")
+            print(f"            Service '{issue['service_name']}' ({issue['service_service_type']})")
             print(f"   Solutions:")
             for service in matching_services:
                 print(f"     • Move to service: '{service.name}' (ID: {service.id})")
@@ -139,11 +139,11 @@ def apply_corrections(db: Session, issues: list, apply_fixes: bool = False):
     print("🛠️  Applying automatic corrections...")
     
     for issue in issues:
-        cohort_program_type = issue['cohort_program_type']
+        cohort_service_type = issue['cohort_service_type']
         
         # Find the best matching service
         matching_services = db.exec(
-            select(Service).where(Service.program_type == cohort_program_type)
+            select(Service).where(Service.service_type == cohort_service_type)
         ).all()
         
         if matching_services:
@@ -158,7 +158,7 @@ def apply_corrections(db: Session, issues: list, apply_fixes: bool = False):
                 
                 print(f"✅ Fixed Contract {issue['contract_id']}: {issue['client_name']}")
                 print(f"   Service: {issue['service_name']} → {correct_service.name}")
-                print(f"   Cohort: {issue['cohort_slug']} ({cohort_program_type})")
+                print(f"   Cohort: {issue['cohort_slug']} ({cohort_service_type})")
     
     if apply_fixes:
         db.commit()
@@ -174,7 +174,7 @@ def main():
         print("=" * 60)
         
         # Step 1: Populate service program types
-        populate_service_program_types(db)
+        populate_service_service_types(db)
         print()
         
         # Step 2: Find compatibility issues

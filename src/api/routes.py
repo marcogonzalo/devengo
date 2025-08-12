@@ -10,6 +10,7 @@ from src.api.accruals.endpoints.accruals import router as accruals_router
 from src.api.integrations.endpoints.holded import router as holded_router
 from src.api.integrations.endpoints.fourgeeks import router as fourgeeks_router
 from src.api.integrations.endpoints.notion import router as notion_router
+from src.api.integrations.endpoints.integration_errors import router as integration_errors_router
 
 api_router = APIRouter()
 
@@ -25,6 +26,7 @@ api_router.include_router(accruals_router)
 api_router.include_router(holded_router)
 api_router.include_router(fourgeeks_router)
 api_router.include_router(notion_router)
+api_router.include_router(integration_errors_router)
 
 
 @api_router.route('/hello', methods=['POST', 'GET'])

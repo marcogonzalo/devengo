@@ -13,6 +13,7 @@ from src.api.services.models.service import Service
 from src.api.services.models.service_period import ServicePeriod
 from src.api.services.models.service_contract import ServiceContract
 from src.api.accruals.models.accrued_period import AccruedPeriod
+from src.api.integrations.models.integration_error import IntegrationError
 
 
 @pytest.fixture(scope="session")

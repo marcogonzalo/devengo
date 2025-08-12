@@ -225,7 +225,8 @@ def sync_client_enrollments(
     period_service: ServicePeriodService = Depends(get_period_service),
     contract_service: ServiceContractService = Depends(get_contract_service),
     service_service: ServiceService = Depends(get_service_service),
-    fourgeeks_client: FourGeeksClient = Depends(get_fourgeeks_client)
+    fourgeeks_client: FourGeeksClient = Depends(get_fourgeeks_client),
+    db: Session = Depends(get_db)
 ) -> dict:
     """
     Synchronize all enrollments associated with client's 4Geeks users.
@@ -269,9 +270,24 @@ def sync_client_enrollments(
 
             except Exception as e:
                 processor.stats["errors"] += 1
-                processor.stats["error_details"].append(
-                    log_contract_error(e, contract.id)
-                )
+                error_msg = log_contract_error(e, contract.id)
+                processor.stats["error_details"].append(error_msg)
+                
+                # Log the error to our integration error table
+                try:
+                    from src.api.integrations.utils.error_logger import log_integration_error
+                    log_integration_error(
+                        integration_name="fourgeeks",
+                        operation_type="sync_enrollments",
+                        external_id=str(contract.id),
+                        entity_type="contract",
+                        error_message=str(e),
+                        error_details={"contract_id": contract.id, "error_msg": error_msg},
+                        contract_id=contract.id,
+                        db=db
+                    )
+                except Exception as log_error:
+                    logger.error(f"Failed to log integration error: {log_error}")
 
         return {
             "success": True,
@@ -279,6 +295,21 @@ def sync_client_enrollments(
         }
 
     except Exception as e:
+        # Log the main sync error
+        try:
+            from src.api.integrations.utils.error_logger import log_integration_error
+            log_integration_error(
+                integration_name="fourgeeks",
+                operation_type="sync_enrollments",
+                external_id="sync_enrollments",
+                entity_type="sync_operation",
+                error_message=str(e),
+                error_details={"step": "sync_enrollments_from_clients"},
+                db=db
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log integration error: {log_error}")
+        
         raise HTTPException(
             status_code=500,
             detail=f"Failed to sync enrollments from clients: {str(e)}"
@@ -288,7 +319,8 @@ def sync_client_enrollments(
 @router.get("/sync-students-from-clients")
 def sync_students_from_clients(
     client_service: ClientService = Depends(get_client_service),
-    fourgeeks_client: FourGeeksClient = Depends(get_fourgeeks_client)
+    fourgeeks_client: FourGeeksClient = Depends(get_fourgeeks_client),
+    db: Session = Depends(get_db)
 ) -> dict:
     """
     Syncs clients in the local database with 4Geeks students by email.
@@ -331,6 +363,23 @@ def sync_students_from_clients(
                     errors += 1
                     if error_msg:
                         error_details.append(log_student_error(error_msg))
+                        
+                        # Log the error to our integration error table
+                        try:
+                            from src.api.integrations.utils.error_logger import log_integration_error
+                            log_integration_error(
+                                integration_name="fourgeeks",
+                                operation_type="sync_students",
+                                external_id=str(client_id),
+                                entity_type="client",
+                                error_message=error_msg,
+                                error_details={"client_id": client_id, "client_identifier": client_identifier, "academy_id": academy_id},
+                                client_id=client_id,
+                                db=db
+                            )
+                        except Exception as log_error:
+                            logger.error(f"Failed to log integration error: {log_error}")
+                        
                     next_clients_remaining.append((client_id, client_identifier))
             clients_remaining = next_clients_remaining
             # Only retry not found/errors in the next academy_id
@@ -355,6 +404,21 @@ def sync_students_from_clients(
         return response
 
     except Exception as e:
+        # Log the main sync error
+        try:
+            from src.api.integrations.utils.error_logger import log_integration_error
+            log_integration_error(
+                integration_name="fourgeeks",
+                operation_type="sync_students",
+                external_id="sync_students",
+                entity_type="sync_operation",
+                error_message=str(e),
+                error_details={"step": "sync_students_from_clients"},
+                db=db
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log integration error: {log_error}")
+        
         logger.exception("Critical error during sync_students_from_clients")
         raise HTTPException(
             status_code=500,

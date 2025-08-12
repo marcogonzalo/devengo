@@ -65,15 +65,22 @@ class FourGeeksClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            logging.error(
-                f"HTTP error occurred in FourGeeksClient get_student_by_email: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"HTTP error occurred in FourGeeksClient get_student_by_email: {e}")
+            status_code = e.response.status_code
+            if status_code == 404:
+                logging.error(
+                    f"Email not found")
+                raise HTTPException(
+                    status_code=status_code, detail=f"Email not found")
+            else:
+                logging.error(
+                    f"HTTP error in trying to get_member_by_email: {e}")
+                raise HTTPException(
+                    status_code=status_code, detail=f"HTTP error in trying to get_member_by_email: {e.response.text}")
         except Exception as e:
             logging.error(
-                f"Error occurred in FourGeeksClient get_student_by_email: {e}")
+                f"Error in trying to get_member_by_email: {e}")
             raise HTTPException(
-                status_code=500, detail=f"Error occurred in FourGeeksClient get_student_by_email: {e}")
+                status_code=500, detail=f"Error in trying to get_member_by_email: {e}")
 
     def get_cohort(self, cohort_id: int) -> Dict[str, Any]:
         """Get cohort information by ID"""

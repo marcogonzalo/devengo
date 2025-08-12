@@ -14,6 +14,7 @@ from src.api.services.endpoints.service_contract import get_service_contract_ser
 from src.api.services.services import ServiceService
 from src.api.services.services.service_service import ServiceService
 from src.api.integrations.holded import HoldedClient, HoldedConfig
+from src.api.integrations.utils.error_logger import log_integration_error
 from src.api.clients.services.client_service import ClientService
 from src.api.invoices.services.invoice_service import InvoiceService
 from src.api.clients.schemas.client import ClientCreate, ClientExternalIdCreate
@@ -49,7 +50,7 @@ def _create_client(contact, client_service):
             name=contact.get("name", "")
         )
     except Exception as e:
-        raise Exception(f"Contact with missing email: {contact.get('id')}.")
+        raise Exception(f"Missing email for contact: {contact.get('id')}.")
 
     client = client_service.create_client(client_data)
 
@@ -72,7 +73,7 @@ async def _get_or_create_client(contact_id, client_service, holded_client):
     if not client:
         contact = await holded_client.get_contact(contact_id)
         if not contact:
-            raise Exception("Contact not found")
+            raise Exception("Contact id not found")
         client = _create_client(contact, client_service)
     return client
 
@@ -215,6 +216,7 @@ async def sync_invoices_and_clients(
     service_service: ServiceService = Depends(get_service_service),
     service_contract_service: ServiceContractService = Depends(
         get_service_contract_service),
+    db: Session = Depends(get_db),
     start_timestamp: Optional[int] = None,
     end_timestamp: Optional[int] = None
 ):
@@ -317,6 +319,21 @@ async def sync_invoices_and_clients(
                 error_count += 1
                 errors.append(str(e))
                 logging.error(f"Error creating invoice: {e}")
+                
+                # Log to integration errors table
+                try:
+                    log_integration_error(
+                        integration_name="holded",
+                        operation_type="invoice",
+                        external_id=str(document_id),
+                        entity_type="invoice",
+                        error_message=str(e),
+                        error_details={"document_data": document, "client_id": client.id if client else None},
+                        client_id=client.id if client else None,
+                        db=invoice_service.db
+                    )
+                except Exception as log_error:
+                    logger.error(f"Failed to log integration error: {log_error}")
         return {
             "success": True,
             "processed": processed_count,
@@ -326,6 +343,20 @@ async def sync_invoices_and_clients(
         }
 
     except Exception as e:
+        # Log the main sync error
+        try:
+            log_integration_error(
+                integration_name="holded",
+                operation_type="sync_invoices_and_clients",
+                external_id="sync_invoices_and_clients",
+                entity_type="sync_operation",
+                error_message=str(e),
+                error_details={"step": "sync_invoices_and_clients"},
+                db=db
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log integration error: {log_error}")
+        
         raise HTTPException(
             status_code=500,
             detail=f"Failed to sync invoices: {str(e)}"
@@ -391,6 +422,7 @@ async def sync_invoices_and_clients(
 async def sync_services(
     service_service: ServiceService = Depends(get_service_service),
     holded_client: HoldedClient = Depends(get_holded_client),
+    db: Session = Depends(get_db),
 ):
     """Sync services from Holded to the local database"""
     try:
@@ -429,7 +461,23 @@ async def sync_services(
                     created_count += 1
             except Exception as e:
                 error_count += 1
-                errors.append(str(e))
+                error_msg = str(e)
+                errors.append(error_msg)
+                
+                # Log the error to our integration error table
+                try:
+                    log_integration_error(
+                        integration_name="holded",
+                        operation_type="sync_services",
+                        external_id=str(service.get('id', 'unknown')),
+                        entity_type="service",
+                        error_message=error_msg,
+                        error_details={"service_data": service},
+                        db=db
+                    )
+                except Exception as log_error:
+                    logger.error(f"Failed to log integration error: {log_error}")
+        
         return {
             "success": True,
             "created": created_count,
@@ -439,6 +487,20 @@ async def sync_services(
             "error_details": errors
         }
     except Exception as e:
+        # Log the main sync error
+        try:
+            log_integration_error(
+                integration_name="holded",
+                operation_type="sync_services",
+                external_id="sync_services",
+                entity_type="sync_operation",
+                error_message=str(e),
+                error_details={"step": "sync_services"},
+                db=db
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log integration error: {log_error}")
+        
         raise HTTPException(
             status_code=500,
             detail=f"Failed to sync services: {str(e)}"

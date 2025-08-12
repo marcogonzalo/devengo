@@ -5,6 +5,9 @@ from sqlmodel import Session
 from src.api.common.utils.database import get_db
 from src.api.clients.services.client_service import ClientService
 from src.api.clients.schemas.client import ClientExternalIdCreate
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/integrations/notion", tags=["integrations"])
 
@@ -69,6 +72,7 @@ async def sync_page_ids_from_clients(
     database_id: str = Query(
         None, description="The Notion database ID (optional, defaults to env)"),
     client_service: ClientService = Depends(get_client_service),
+    db: Session = Depends(get_db),
 ):
     """
     Sync all Notion page IDs for registered clients as ClientExternalId with system = 'notion'.
@@ -92,11 +96,29 @@ async def sync_page_ids_from_clients(
             try:
                 page_id = await notion_client.get_page_id(db_id, "Email", identifier)
             except Exception as e:
+                error_msg = f"Error querying Notion: {str(e)}"
                 not_found.append({
                     "client_id": client.id,
                     "identifier": identifier,
-                    "reason": f"Error querying Notion: {str(e)}"
+                    "reason": error_msg
                 })
+
+                # Log the error to our integration error table
+                try:
+                    from src.api.integrations.utils.error_logger import log_integration_error
+                    log_integration_error(
+                        integration_name="notion",
+                        operation_type="sync_page_id",
+                        external_id=str(client.id),
+                        entity_type="client",
+                        error_message=error_msg,
+                        error_details={"client_id": client.id, "identifier": identifier},
+                        client_id=client.id,
+                        db=db
+                    )
+                except Exception as log_error:
+                    logger.error(f"Failed to log integration error: {log_error}")
+
                 continue
             if not page_id:
                 not_found.append({
@@ -124,5 +146,20 @@ async def sync_page_ids_from_clients(
     except HTTPException:
         raise
     except Exception as e:
+        # Log the main sync error
+        try:
+            from src.api.integrations.utils.error_logger import log_integration_error
+            log_integration_error(
+                integration_name="notion",
+                operation_type="sync_page_ids",
+                external_id="sync_page_ids",
+                entity_type="sync_operation",
+                error_message=str(e),
+                error_details={"step": "sync_page_ids_from_clients"},
+                db=db
+            )
+        except Exception as log_error:
+            logger.error(f"Failed to log integration error: {log_error}")
+        
         raise HTTPException(
             status_code=500, detail=f"Failed to sync Notion page IDs: {str(e)}")

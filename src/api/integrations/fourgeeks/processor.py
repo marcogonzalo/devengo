@@ -4,6 +4,7 @@ from fastapi.logger import logger
 from src.api.clients.schemas.client import ClientExternalIdCreate
 from src.api.integrations.fourgeeks.client import FourGeeksClient
 from src.api.integrations.fourgeeks.log_error import log_enrollment_error
+from src.api.integrations.utils.error_logger import log_integration_error
 from src.api.common.constants.services import ServicePeriodStatus, map_educational_status
 from src.api.clients.services.client_service import ClientService
 from src.api.services.services.service_period_service import ServicePeriodService
@@ -75,9 +76,24 @@ class EnrollmentProcessor:
 
         except Exception as e:
             self.stats["errors"] += 1
-            self.stats["error_details"].append(
-                log_enrollment_error(e, cohort_slug, contract_id)
-            )
+            error_msg = log_enrollment_error(e, cohort_slug, contract_id)
+            self.stats["error_details"].append(error_msg)
+            
+            # Log to integration errors table
+            try:
+                log_integration_error(
+                    integration_name="fourgeeks",
+                    operation_type="enrollment",
+                    external_id=cohort_slug,
+                    entity_type="cohort",
+                    error_message=str(e),
+                    error_details={"contract_id": contract_id, "enrollment_data": enrollment},
+                    contract_id=contract_id,
+                    db=self.client_service.db
+                )
+            except Exception as log_error:
+                logger.error(f"Failed to log integration error: {log_error}")
+            
             self.client_service.db.rollback()
 
     def _validate_enrollment(self, cohort: dict) -> bool:
@@ -280,7 +296,7 @@ class StudentProcessor:
             return str(student_user_id), None
 
         except Exception as e:
-            error_msg = f"Client {client_id}: {str(e)}"
+            error_msg = f"FourGeeksClient error on Client {client_id}: {str(e)}"
             logger.error(error_msg)
             # Consider if specific exceptions need different handling
             # E.g., API connection errors vs. data validation errors

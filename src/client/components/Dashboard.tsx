@@ -6,6 +6,7 @@ import { useTheme } from "@heroui/use-theme";
 import ClientManagement from './ClientManagement';
 import AccrualOverview from './AccrualOverview';
 import AccrualReports from './AccrualReports';
+import IntegrationErrors from './IntegrationErrors';
 
 const Dashboard: React.FC = () => {
   const { theme, setTheme } = useTheme();
@@ -30,6 +31,9 @@ const Dashboard: React.FC = () => {
           </NavbarItem>
           <NavbarItem>
             <Link to="/dashboard/reports" className="text-foreground">Reports</Link>
+          </NavbarItem>
+          <NavbarItem>
+            <Link to="/dashboard/errors" className="text-foreground">Integration Errors</Link>
           </NavbarItem>
         </NavbarContent>
         <NavbarContent justify="end">
@@ -56,6 +60,7 @@ const Dashboard: React.FC = () => {
           <Route path="/" element={<AccrualOverview />} />
           <Route path="/clients" element={<ClientManagement />} />
           <Route path="/reports" element={<AccrualReports />} />
+          <Route path="/errors" element={<IntegrationErrors />} />
         </Routes>
       </main>
     </div>
