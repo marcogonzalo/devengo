@@ -2,245 +2,245 @@
 
 ## Overview
 
-This document describes the contract accrual processing system that implements the business logic for processing ServiceContracts based on their status and associated ServicePeriods to generate appropriate accrual records.
+The accrual processing system handles ServiceContract processing based on status and ServicePeriods to generate accrual records.
 
-**Key Principles:**
+**Core Principles:**
 
-- Monthly portions are calculated based on **remaining sessions**, not total sessions
-- Accrued amounts are calculated from **remaining_amount_to_accrue**, not total contract amount
-- This ensures proper accrual distribution in final periods where only a percentage of the remaining amount should be accrued
+- Monthly portions calculated from **remaining sessions/amounts**, not totals
+- Progressive accrual: each period accrues from what's left
+- Session-based proportions for accurate distribution
 
 ## Architecture
 
-The system follows a clean architecture pattern with clear separation of concerns:
+```
+ContractAccrualProcessor (Service Layer)
+├── process_all_contracts() - Main orchestrator
+├── _process_contract() - Route by contract status
+├── _process_*_contract() - Status-specific handlers
+└── _process_*_service_period() - Period-specific handlers
 
-### Service Layer
+Endpoints:
+├── POST /accruals/process-contracts - Process accruals
+└── GET /accruals/process-contracts/schema - Documentation
 
-- **`ContractAccrualProcessor`**: Main service class that orchestrates the accrual processing
-- Located in: `src/api/accruals/services/contract_accrual_processor.py`
-- **Async Support**: Full async/await support for Notion integration
-
-### Endpoint Layer
-
-- **`/accruals/process-contracts`**: Main endpoint for processing contract accruals (async)
-- **`/accruals/process-contracts/schema`**: Documentation endpoint for the processing schema
-- Located in: `src/api/accruals/endpoints/contract_accrual_process.py`
-
-### Models
-
-- **`ContractAccrual`**: Tracks contract-level accrual data
-- **`AccruedPeriod`**: Records individual accrual transactions
-- **`ServiceContract`**: Contract information
-- **`ServicePeriod`**: Service delivery periods
-
-### Database Relationships
-
-- One-to-one: ServiceContract ↔ ContractAccrual
-- One-to-many: ContractAccrual → AccruedPeriod
-- One-to-many: ServiceContract → ServicePeriod
-
-## Contract Processing Cases
-
-### Case 1: Active Contracts (`ServiceContractStatus.ACTIVE`)
-
-#### 1.1 Active Contracts with Completed Accruals
-
-- Update ServiceContract status based on total amount to accrue
-- Skip further processing
-
-#### 1.2 Active Contracts Without Service Periods
-
-**When client is found in Notion:**
-
-- Check educational status
-- If not ended: Send notification or ignore if recent
-- If ended: Accrue fully and update status accordingly
-
-**When client is NOT found in Notion:**
-
-- Recent contract (≤15 days): Send notification about missing CRM data
-- Older contract: Process as resignation - accrue fully and mark as CANCELED
-
-#### 1.3 Active Contracts With Service Periods
-
-Process based on overlapping period status:
-
-- **ACTIVE**: Accrue proportional amount for the month **based on remaining sessions and amounts**
-- **POSTPONED**: Accrue until status change date, set accrual to PAUSED
-- **DROPPED**: Accrue fully and mark contract as CANCELED
-- **ENDED**: Accrue remaining amount and mark contract as CLOSED
-
-### Case 2: Canceled Contracts (`ServiceContractStatus.CANCELED`)
-
-#### 2.1 Canceled Contracts with Completed Accruals
-
-- Skip processing
-
-#### 2.2 Canceled Contracts Without Service Periods
-
-- Check Notion integration
-- Validate consistency with educational status
-- Accrue fully if conditions are met
-- For contracts not found in CRM and >15 days old: Process as resignation
-
-#### 2.3 Canceled Contracts With Service Periods
-
-- Validate that periods are DROPPED or POSTPONED
-- Send notification if inconsistent statuses found
-- Accrue fully if validation passes
-
-### Case 3: Closed Contracts (`ServiceContractStatus.CLOSED`)
-
-#### 3.1 Closed Contracts with Completed Accruals
-
-- Skip processing
-
-#### 3.2 Closed Contracts Without Service Periods
-
-- Validate with Notion integration
-- Ensure educational status is ENDED
-- Accrue fully if validation passes
-- **Critical Fix**: Apply same resignation logic as ACTIVE contracts for clients not found in CRM
-
-#### 3.3 Closed Contracts With Service Periods
-
-- Validate all periods are ENDED
-- Send notification if inconsistent statuses found  
-- Accrue fully if validation passes
-- **Critical Fix**: Handle ENDED periods from previous years that need completion
-
-### Case 4: Zero-Amount Contracts
-
-**Scenario**: Contract amount is zero, typically for free courses, trials, or promotional offerings.
-
-**Business Logic**: Zero-amount contracts still need proper CRM tracking and resignation processing.
-
-**Processing Flow**:
-
-1. **Recent contracts (≤15 days)**: Send notification about missing CRM data
-2. **Older contracts (>15 days) without Notion profile**: Process as contract resignation
-3. **Contracts with Notion profile and ended educational status**: Mark as completed
-4. **Other cases**: Send notifications for manual review
-
-**AccruedPeriod Creation**: Creates proper `AccruedPeriod` records for audit trail with amount 0.0.
-
-### Case 5: Negative Contract Amounts
-
-#### 5.1 Dropped Service Period Before Accrual
-
-**Scenario**: Contract amount is negative and service period was dropped before any accrual occurred.
-
-**Handling**: Full negative amount is accrued in one period, contract status set to CANCELED.
-
-#### 5.2 Negative Contract Resignation
-
-**Scenario**: Contract amount is negative, no service periods, profile not found in Notion, contract >15 days old.
-
-**Handling**: Full negative amount accrued as resignation, contract status set to CANCELED.
-
-## Critical Fixes for Historical Processing
-
-### 1. Historical Processing Consistency Fix
-
-**Problem**: The `_is_contract_recent` method was using `date.today()` instead of the target processing month, causing inconsistent behavior when processing historical data.
-
-**Solution**: Updated to accept optional `target_month` parameter:
-
-```python
-def _is_contract_recent(self, contract_date: date, target_month: Optional[date] = None) -> bool:
-    """Check if contract date is within 15 days of the target month end."""
-    if target_month is None:
-        reference_date = date.today()
-    else:
-        reference_date = get_month_end(target_month)
-    
-    return (reference_date - contract_date).days <= 15
+Models:
+├── ServiceContract ↔ ContractAccrual (1:1)
+├── ContractAccrual → AccruedPeriod (1:N)
+└── ServiceContract → ServicePeriod (1:N)
 ```
 
-### 2. CLOSED Contracts Without Service Periods - Resignation Detection
+## Processing Flow
 
-**Problem**: CLOSED contracts without service periods were missing resignation detection logic.
+### 1. Contract Filtering
 
-**Solution**: Enhanced `_process_closed_without_service_period` method to include the same resignation logic as ACTIVE contracts.
-
-### 3. ENDED Service Periods from Previous Years
-
-**Problem**: CLOSED contracts with ENDED service periods from previous years with incomplete accruals were being skipped.
-
-**Solution**: Added special handling to process the most recent ENDED period when no overlapping periods exist but accrual is incomplete.
-
-**Cases Resolved**:
-
-- Multiple clients with contracts not found in CRM (resignation processing)
-- Contracts with ENDED service periods from previous years (natural completion)
-
-## Accrual Calculation Logic
-
-### Key Principles
-
-1. **Remaining-Based Calculations**: All calculations use remaining amounts and sessions
-2. **Progressive Accrual**: Each period accrues from what's left, not the total
-3. **Session-Based Proportions**: Monthly portions calculated based on session distribution
-
-### Example Scenario
-
-**Contract Details:**
-
-- Total Amount: €10,000
-- Total Sessions: 100
-- Already Accrued: €7,000 (70 sessions)
-- Remaining: €3,000 (30 sessions)
-
-**Month Processing:**
-
-- Sessions in Month: 15
-- Portion: 15/30 = 50% (of remaining)
-- Accrued Amount: €3,000 × 50% = €1,500
-
-### Updated Methods
-
-#### `_calculate_monthly_portion()`
-
-```python
-def _calculate_monthly_portion(self, contract_accrual: ContractAccrual, period: ServicePeriod, target_month: date) -> float:
-    """Calculate portion based on remaining sessions."""
-    sessions_in_overlap = period.get_sessions_between(overlap_start, overlap_end)
-    remaining_sessions = contract_accrual.sessions_remaining_to_accrue
-    
-    if remaining_sessions <= 0:
-        return 0.0
-    
-    return min(1.0, sessions_in_overlap / remaining_sessions)
+```
+All Contracts
+├── ❌ Not started (contract_date > month_end)
+├── ❌ Completed (CLOSED/CANCELED + COMPLETED accrual)
+└── ✅ Processable Contracts
+    ├── Has overlapping periods
+    ├── Recent contracts (≤15 days)
+    ├── Has DROPPED periods in target month
+    ├── ISA Full-Time contracts
+    └── Has POSTPONED periods (time limit check)
 ```
 
-#### `_accrue_portion()`
+### 2. Contract Status Routing
+
+```
+ServiceContract Status
+├── ACTIVE → _process_active_contract()
+├── CANCELED → _process_canceled_contract()
+└── CLOSED → _process_closed_contract()
+```
+
+## Processing Cases
+
+### Case 1: ACTIVE Contracts
+
+#### 1.1 Completed Accruals
+
+```
+Condition: contract_accrual.accrual_status == COMPLETED
+Action: Update ServiceContract status
+├── total_to_accrue > 0 → CLOSED
+└── total_to_accrue ≤ 0 → CANCELED
+```
+
+#### 1.2 Without Service Periods
+
+```
+Client in Notion?
+├── YES → Check educational status
+│   ├── ENDED → Accrue fully + update status
+│   └── NOT ENDED → Skip (recent) or notify
+└── NO → Resignation processing
+    ├── Recent (≤15 days) → Notify missing CRM
+    └── Old (>15 days) → Accrue fully + CANCELED
+```
+
+#### 1.3 With Service Periods
+
+```
+Overlapping Period Status:
+├── ACTIVE → Accrue proportional amount
+├── POSTPONED → Accrue until status_change_date + PAUSED
+├── DROPPED → Accrue fully + CANCELED
+└── ENDED → Accrue full remaining + CLOSED
+```
+
+### Case 2: CANCELED Contracts
+
+#### 2.1 Completed Accruals
+
+```
+Condition: contract_accrual.accrual_status == COMPLETED
+Action: Skip processing
+```
+
+#### 2.2 Without Service Periods
+
+```
+Client in Notion?
+├── YES → Validate educational status
+│   ├── ENDED/DROPPED → Accrue fully + CLOSED
+│   └── NOT ENDED → Notify + skip
+└── NO → Resignation processing
+    └── Accrue fully + CANCELED
+```
+
+#### 2.3 With Service Periods
+
+```
+Period Status Check:
+├── DROPPED/POSTPONED → Accrue fully + CANCELED
+└── ACTIVE/ENDED → Notify + skip
+```
+
+### Case 3: CLOSED Contracts
+
+#### 3.1 Completed Accruals
+
+```
+Condition: contract_accrual.accrual_status == COMPLETED
+Action: Skip processing
+```
+
+#### 3.2 Without Service Periods
+
+```
+Client in Notion?
+├── YES → Validate educational status
+│   ├── ENDED → Accrue fully + CLOSED
+│   └── NOT ENDED → Notify + skip
+└── NO → Resignation processing
+    ├── Recent (≤15 days) → Notify missing CRM
+    └── Old (>15 days) → Accrue fully + CANCELED
+```
+
+#### 3.3 With Service Periods
+
+```
+Period Status Check:
+├── ENDED → Accrue fully + CLOSED
+└── ACTIVE/POSTPONED/DROPPED → Notify + skip
+```
+
+## Special Cases
+
+### Zero-Amount Contracts
+
+```
+Condition: contract.contract_amount == 0
+Processing:
+├── Recent (≤15 days) → Notify missing CRM
+├── Old (>15 days) + No Notion → Resignation processing
+├── Has Notion + ENDED → Mark completed
+└── Other cases → Notify for manual review
+```
+
+### Negative Amount Contracts
+
+```
+Condition: contract_accrual.remaining_amount_to_accrue < 0
+Processing:
+├── Dropped before accrual → Full negative accrual + CANCELED
+└── Resignation → Full negative accrual + CANCELED
+```
+
+### Postponed Period Time Limits
+
+```
+Condition: Last postponed period > 3 months
+Processing:
+├── Check if period exceeded POSTPONED_PERIOD_MAX_MONTHS
+├── Verify it's the last service period
+└── Accrue fully + CANCELED
+```
+
+### ISA Full-Time Contracts
+
+```
+Condition: service.name == "ES - ISA - Full-Time"
+Processing:
+├── Check for new invoices in target month
+├── Recalculate remaining amount if completed
+└── Process new accruals
+```
+
+## Accrual Calculation
+
+### Monthly Portion Calculation
+
+```
+portion = sessions_in_overlap / remaining_sessions
+accrued_amount = remaining_amount_to_accrue × portion
+```
+
+### Example
+
+```
+Contract: €10,000 total, 100 sessions
+Already accrued: €7,000 (70 sessions)
+Remaining: €3,000 (30 sessions)
+
+Month processing:
+- Sessions in month: 15
+- Portion: 15/30 = 50%
+- Accrued: €3,000 × 50% = €1,500
+```
+
+## Constants & Configuration
+
+### Time-Based Constants
 
 ```python
-def _accrue_portion(self, contract: ServiceContract, contract_accrual: ContractAccrual, portion: float, target_month: date, period: ServicePeriod) -> float:
-    """Accrue from remaining amount, not total."""
-    accrued_amount = contract_accrual.remaining_amount_to_accrue * portion
-    
-    # Update remaining amounts and sessions
-    contract_accrual.total_amount_accrued += accrued_amount
-    contract_accrual.remaining_amount_to_accrue -= accrued_amount
-    contract_accrual.total_sessions_accrued += sessions_accrued
-    contract_accrual.sessions_remaining_to_accrue -= sessions_accrued
+class AccrualTimeConstants:
+    CONTRACT_RECENCY_DAYS = 15
+    POSTPONED_PERIOD_MAX_MONTHS = 3
+    CONTRACT_WITHOUT_PERIODS_MAX_MONTHS = 3
+```
+
+### Status Mappings
+
+```python
+ServiceContractStatus: ACTIVE, CANCELED, CLOSED
+ServicePeriodStatus: ACTIVE, POSTPONED, DROPPED, ENDED
+ContractAccrualStatus: ACTIVE, PAUSED, COMPLETED
 ```
 
 ## API Usage
 
-### Process Contract Accruals
+### Process Accruals
 
 ```http
 POST /accruals/process-contracts
-Content-Type: application/json
-
 {
   "period_start_date": "2024-01-01"
 }
 ```
 
-**Response:**
+### Response Structure
 
 ```json
 {
@@ -251,158 +251,77 @@ Content-Type: application/json
     "failed_accruals": 5,
     "skipped_accruals": 25
   },
-  "processing_results": [
-    {
-      "contract_id": 1,
-      "service_period_id": 10,
-      "status": "SUCCESS",
-      "message": "Accrued portion 50.00% - Amount: 1500.00"
-    }
-  ],
-  "notifications": [
-    {
-      "type": "not_congruent_status",
-      "message": "Contract 123 - Client without service period in CRM",
-      "timestamp": "2024-01-15"
-    }
-  ]
+  "processing_results": [...],
+  "notifications": [...]
 }
 ```
 
-### Get Processing Schema
+## Critical Fixes
 
-```http
-GET /accruals/process-contracts/schema
-```
+### 1. Historical Processing Consistency
 
-Returns the complete business logic schema documentation.
+**Problem**: `_is_contract_recent()` used `date.today()` instead of target month
+**Fix**: Added optional `target_month` parameter for historical processing
 
-## Configuration
+### 2. CLOSED Contracts Resignation Detection
 
-### Business Rules
+**Problem**: Missing resignation logic for CLOSED contracts without service periods
+**Fix**: Applied same resignation logic as ACTIVE contracts
 
-- Contract recency threshold: 15 days
-- Educational status mapping for ended states: `['GRADUATED', 'NOT_COMPLETING', 'ENDED']`
+### 3. Postponed Period Time Limits
 
-### Accrual Tracking Fields
+**Problem**: Postponed periods exceeding 3 months not being processed
+**Fix**: Added time limit checking and full accrual for exceeded periods
 
-- `total_amount_accrued`: Total amount accrued so far
-- `remaining_amount_to_accrue`: Amount still to be accrued
-- `total_sessions_accrued`: Sessions accrued so far
-- `sessions_remaining_to_accrue`: Sessions still to be accrued
+### 4. Non-Overlapping Postponed Periods
 
-## Technical Implementation Details
+**Problem**: Postponed periods without target month overlap being skipped
+**Fix**: Added processing logic for non-overlapping postponed periods
 
-### Performance Optimizations
+## Helper Methods
 
-#### Smart Contract Filtering
+### Core Processing
 
-The system includes intelligent contract filtering to process only relevant contracts:
+- `_process_*_contract()` - Status-specific handlers
+- `_process_*_service_period()` - Period-specific handlers
+- `_handle_*_accrual()` - Special case handlers
 
-**Excluded Contracts:**
+### Validation & Checks
 
-1. **Completed Contracts**: `CLOSED` or `CANCELED` contracts with `COMPLETED` accruals
-2. **Non-Overlapping Periods**: Contracts with ServicePeriods that don't overlap with target month
+- `_is_contract_recent()` - Contract recency check
+- `_has_postponed_period_exceeded_max_months()` - Time limit check
+- `_is_last_service_period()` - Last period validation
 
-**Critical Fix for Zero-Amount Contracts**: Modified filtering logic to include zero-amount contracts only if they haven't been processed yet:
+### Calculation
 
-```python
-exclude_completed = and_(
-    ServiceContract.status.in_([ServiceContractStatus.CLOSED, ServiceContractStatus.CANCELED]),
-    exists().where(...accrual_status == ContractAccrualStatus.COMPLETED...),
-    or_(
-        ServiceContract.contract_amount != 0,  # Non-zero contracts: exclude when completed
-        exists().where(  # Zero-amount contracts: exclude only if they have AccruedPeriod records
-            AccruedPeriod.contract_accrual_id == ContractAccrualAlias.id
-        )
-    )
-)
-```
+- `_calculate_monthly_portion()` - Session-based portion calculation
+- `_accrue_portion()` - Progressive accrual from remaining amounts
+- `_accrue_fully()` - Complete remaining amount accrual
 
-#### Query Optimization Features
+## Error Handling
 
-- **Eager Loading**: All related entities loaded in single query
-- **Selective Loading**: Only contracts needing processing are retrieved
-- **Efficient Joins**: Optimized relationship loading with `selectinload`
+### Notifications
 
-### Code Quality Improvements - DRY Principle
+- `not_congruent_status` - Status inconsistencies
+- `missing_crm_data` - Client not found in Notion
+- `processing_error` - System errors
 
-The system has been refactored to follow the DRY (Don't Repeat Yourself) principle by extracting common patterns into reusable helper methods:
+### Logging
 
-#### New Helper Methods
+- Structured logging with contract IDs
+- Performance metrics
+- Debug output for variable inspection
 
-1. **`_handle_negative_amount_accrual()`** - Handles negative contract amounts with consistent logging
-2. **`_handle_zero_amount_completion()`** - Handles zero remaining amount completion
-3. **`_handle_contract_resignation()`** - Handles contract resignation scenarios
-4. **`_handle_educational_status_accrual()`** - Handles accrual for ended educational status
-5. **`_handle_full_accrual_with_status_update()`** - Handles full accrual with status updates
-6. **`_handle_zero_amount_contract_resignation()`** - Handles zero-amount contract resignations
+## Performance Optimizations
 
-**Benefits:**
+### Smart Filtering
 
-- Reduced ~200 lines of repetitive code
-- Improved maintainability and consistency
-- Better testability and readability
-- Uniform error handling and logging
+- Exclude completed contracts
+- Include only relevant periods
+- Eager loading of relationships
 
-### Key Features
+### Query Optimization
 
-1. **Comprehensive Status Handling** - All ServiceContract and ServicePeriod statuses
-2. **Integration Support** - Async Notion integration with proper error handling
-3. **Robust Error Handling** - Comprehensive exception handling and logging
-4. **Notification System** - Categorized notifications for manual review
-5. **Audit Trail** - Complete AccruedPeriod records for all transactions
-
-### Monitoring and Observability
-
-#### Logging
-
-- Structured logging with contract IDs and processing stages
-- Error logging with full exception details
-- Performance metrics for processing times
-- Debug output for variable inspection (following user rule)
-
-#### Metrics
-
-- Processing statistics in response
-- Success/failure rates
-- Notification counts by type
-
-#### Debugging
-
-- Print statements for variable inspection
-- Accrual calculation debug output
-- Session and amount tracking logs
-
-### Best Practices
-
-#### Service Layer
-
-- Single responsibility principle
-- Dependency injection for database sessions
-- Clear method naming and documentation
-- Proper async handling for external integrations
-
-#### Endpoint Layer
-
-- Proper HTTP status codes
-- Comprehensive error handling
-- Input validation with Pydantic schemas
-- Full async support
-
-#### Data Layer
-
-- Proper foreign key relationships
-- Enum types for status fields
-- Timestamp tracking for audit trails
-- Incremental updates for remaining amounts and sessions
-
-## Future Enhancements
-
-1. **Batch Processing**: Support for processing specific contract sets
-2. **Dry Run Mode**: Preview processing results without committing changes
-3. **Retry Mechanism**: Automatic retry for failed contract processing
-4. **Performance Optimization**: Bulk database operations for large datasets
-5. **Advanced Notifications**: Email/Slack integration for critical notifications
-6. **Accrual Validation**: Cross-check calculations against expected totals
-7. **Historical Reporting**: Track accrual progression over time
+- Single query with `selectinload`
+- Selective contract retrieval
+- Efficient joins and filtering
