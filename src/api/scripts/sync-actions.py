@@ -545,7 +545,7 @@ async def perform_accruals(client, monthly_timestamps):
         "total_errors": 0,
         "monthly_results": []
     }
-    for i in range(len(monthly_timestamps)):
+    for i in range(len(monthly_timestamps) - 1):
         start_timestamp = monthly_timestamps[i]
         accrual_date = datetime.fromtimestamp(start_timestamp).strftime('%Y-%m-%d')
         logger.info(f"📅 Processing accruals for month: {accrual_date}")

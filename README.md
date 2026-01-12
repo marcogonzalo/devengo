@@ -156,8 +156,10 @@ pipenv sync-actions [OPTIONS]
   - `notion-external-id` — Sync Notion external IDs for clients
   - `accruals` — Only perform accruals for each month (skips all previous steps)
 - `--year <year>`: Target year for processing (e.g., `2024`). Defaults to 2024 if not set. Ignored if `--start-date` and `--end-date` are provided.
-- `--start-date <YYYY-MM-DD>`: Start date for processing (inclusive). If set, overrides `--year`.
-- `--end-date <YYYY-MM-DD>`: End date for processing (exclusive). If set, overrides `--year`.
+- `--start-date <YYYY-MM-DD>`: Start date for processing (inclusive). Must be the first day of a month (YYYY-MM-01). If set, overrides `--year`.
+- `--end-date <YYYY-MM-DD>`: End date for processing (exclusive, not included). Must be the first day of a month (YYYY-MM-01). If set, overrides `--year`.
+
+**Important:** Both `--start-date` and `--end-date` should be the first day of a month. The `--end-date` is exclusive, meaning the month containing that date will NOT be processed. For example, `--start-date 2024-03-01 --end-date 2024-07-01` will process March, April, May, and June (not July).
 
 #### Examples
 
@@ -167,23 +169,67 @@ pipenv sync-actions [OPTIONS]
   python src/api/scripts/sync-actions.py
   ```
 
-- Start from importing invoices and clients:
+- Sync invoices between two months (e.g., March through June 2024):
 
   ```bash
-  python src/api/scripts/sync-actions.py --from-step invoices
+  python src/api/scripts/sync-actions.py --from-step invoices --start-date 2024-03-01 --end-date 2024-07-01
   ```
+  
+  This processes invoices for:
+  - March 2024 (2024-03-01 to 2024-04-01)
+  - April 2024 (2024-04-01 to 2024-05-01)
+  - May 2024 (2024-05-01 to 2024-06-01)
+  - June 2024 (2024-06-01 to 2024-07-01)
+  
+  Note: July is NOT processed because `--end-date` is exclusive.
 
-- Only perform accruals for each month in 2024:
+- Run accruals for a date range (e.g., March through June 2024):
 
   ```bash
-  python src/api/scripts/sync-actions.py --from-step accruals
+  python src/api/scripts/sync-actions.py --from-step accruals --start-date 2024-03-01 --end-date 2024-07-01
+  ```
+  
+  This processes accruals for:
+  - March 2024 (2024-03-01)
+  - April 2024 (2024-04-01)
+  - May 2024 (2024-05-01)
+  - June 2024 (2024-06-01)
+  
+  Note: July is NOT processed because `--end-date` is exclusive.
+
+- Run accruals for a single month (e.g., March 2024):
+
+  ```bash
+  python src/api/scripts/sync-actions.py --from-step accruals --start-date 2024-03-01 --end-date 2024-04-01
   ```
 
-- Process a custom date range (e.g., from March to June 2024):
+- Run accruals for the entire year 2024:
+
+  ```bash
+  python src/api/scripts/sync-actions.py --from-step accruals --year 2024
+  ```
+
+- Process a custom date range for all sync steps (e.g., from March to June 2024):
 
   ```bash
   python src/api/scripts/sync-actions.py --start-date 2024-03-01 --end-date 2024-07-01
   ```
+  
+  This runs all sync steps (services, invoices, CRM clients, service periods, Notion sync) but does NOT run accruals. To run accruals, use `--from-step accruals` separately.
+
+#### Complete Workflow Example
+
+To sync invoices and then run accruals for the same date range:
+
+```bash
+# Step 1: Sync invoices for March through June 2024
+python src/api/scripts/sync-actions.py --from-step invoices --start-date 2024-03-01 --end-date 2024-07-01
+
+# Step 2: Run accruals for the same period
+python src/api/scripts/sync-actions.py --from-step accruals --start-date 2024-03-01 --end-date 2024-07-01
+```
+
+Both commands use the same date range and will process the same months (March, April, May, June), ensuring consistency between invoice data and accrual calculations.
 
 ### Environment Variables
 
