@@ -1,0 +1,44 @@
+---
+description: Python code guidelines
+globs: *.py
+---
+# Python (backend) — reglas de desarrollo
+
+## Objetivo
+
+Mantener **coherencia** (mismo estilo/arquitectura), **congruencia** (mismas decisiones en casos similares) y **unicidad** (una única fuente de verdad por responsabilidad) en el backend.
+
+## Estilo y calidad
+
+- Sigue **PEP8** y usa nombres descriptivos.
+- Añade **type hints** en funciones públicas y en la capa de servicios.
+- Prefiere funciones pequeñas, puras cuando sea posible, y **sin efectos colaterales** inesperados.
+- Manejo de errores:
+  - No tragues excepciones silenciosamente.
+  - Eleva/propaga errores con contexto y mensajes accionables.
+  - Valida entradas en el borde (schemas) y mantén la lógica en servicios.
+
+## Arquitectura y unicidad
+
+- **Routes**: solo orquestación (request/response), sin lógica de negocio.
+- **Services**: lógica de negocio y reglas de dominio.
+- **Models/Schemas**: una única definición por entidad; evita duplicar estructuras.
+- **Migrations**: nunca edites meses pasados/datos históricos de forma destructiva; usa migraciones nuevas.
+
+## Testing (TDD) y cobertura
+
+- Aplica **TDD**: primero test que falle, luego implementación, luego refactor.
+- Prioriza tests de **tu código** (no del framework/terceros).
+- Incluye edge-cases: nulos, listas vacías, fechas límite, errores de integración.
+- Objetivo: **cobertura ≥ 80%** en el código propio (usa `pytest-cov`).
+
+## Verificación obligatoria tras cada cambio (error checking)
+
+Después de modificar `.py`, ejecuta:
+
+```bash
+pipenv run pytest
+pipenv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+```
+
+Si hay migraciones nuevas o cambios de modelos, ejecuta los tests relevantes (unit/integration) y revisa que Alembic detecta cambios esperados.

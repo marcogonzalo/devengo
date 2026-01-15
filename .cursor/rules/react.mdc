@@ -1,0 +1,46 @@
+---
+description: React code guidelines
+globs: *.tsx
+---
+# React/TSX (frontend) — reglas de desarrollo
+
+## Objetivo
+
+Consistencia UI/UX, accesibilidad y mantenibilidad con **un solo patrón** por tipo de problema (evitar “cada componente a su manera”).
+
+## Reglas base
+
+- Usa **componentes funcionales** y hooks.
+- Mantén componentes pequeños:
+  - **UI components**: presentación y estado local.
+  - **Data/logic**: en utilidades/servicios o hooks dedicados (evita lógica pesada en JSX).
+- TypeScript:
+  - No uses `any` salvo necesidad justificada y localizada.
+  - Tipos/props explícitos en componentes públicos.
+
+## Tema (claro/oscuro)
+
+- Todo feature nuevo debe soportar **light y dark mode**.
+- **Dark mode por defecto**.
+- No hardcodees colores: usa tokens/clases (Tailwind o sistema de tema) para asegurar consistencia.
+
+## UX y accesibilidad
+
+- Estados obligatorios: loading, empty, error, success.
+- Controles accesibles: `aria-*` cuando aplique, labels correctos, foco visible.
+
+## Unicidad y coherencia
+
+- Para llamadas a API usa el helper existente (p. ej. `src/client/utils/api.ts`) y evita duplicar lógica de fetch.
+- Formato de errores: una única forma de mostrar/registrar errores en UI.
+
+## Verificación obligatoria tras cada cambio (error checking)
+
+Después de modificar `.tsx` o código del cliente, ejecuta:
+
+```bash
+npm run lint
+npm run build
+```
+
+Si el cambio toca integración con backend, prueba manualmente el flujo principal afectado y valida manejo de errores.

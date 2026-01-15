@@ -1,0 +1,51 @@
+---
+description: Repository-wide agent rules (consistency & verification)
+globs: "*"
+---
+
+# Reglas generales (todo el repo)
+
+## Principios
+
+- **Unicidad**: una única fuente de verdad por responsabilidad (evitar duplicar lógica/constantes/esquemas).
+- **Coherencia**: mismo patrón para el mismo problema (nombres, estructura, manejo de errores, estilo).
+- **Congruencia**: decisiones consistentes con el dominio (accrual), sin atajos que rompan premisas.
+
+## Convenciones de cambios
+
+- Mantén cambios **pequeños y revisables** (PR/commit mental model).
+- No mezcles refactors con features si no es necesario.
+- No introduzcas archivos temporales/backup en el repo (p. ej. dumps `.sql`, `Untitled-*.sql`).
+
+## Post-condición obligatoria: verificación de errores tras cada desarrollo
+
+Cada vez que completes un cambio “real” (feature/bugfix/refactor), **debes** ejecutar lo aplicable:
+
+### Frontend (TypeScript/React)
+
+```bash
+npm run lint
+npm run build
+```
+
+### Backend (Python)
+
+```bash
+pipenv run pytest
+pipenv run pytest --cov=src --cov-report=term-missing --cov-fail-under=80
+```
+
+### Docker (si el cambio afecta runtime/entorno)
+
+- Verifica que los servicios levantan en Docker y que el cambio funciona en el entorno containerizado.
+
+## Reglas de debugging/logging
+
+- Si necesitas imprimir variables en consola, incluye su nombre:
+  - Python: `print("variable_name", variable_name)`
+  - JS/TS: `console.log("variable_name", variableName)`
+
+## Entornos
+
+- Usa entornos **dockerizados** para dev/test/prod (si aplica al cambio).
+- Mantén el proyecto listo para debugging desde el editor (p. ej. `debugpy` en backend).
