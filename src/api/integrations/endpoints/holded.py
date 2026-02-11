@@ -229,6 +229,8 @@ async def sync_invoices_and_clients(
             document_type="creditnote", starttmp=start_timestamp, endtmp=end_timestamp)
         documents = invoices + credit_notes
         processed_count = 0
+        created_count = 0
+        updated_count = 0
         skipped_count = 0
         error_count = 0
         errors = []
@@ -252,6 +254,7 @@ async def sync_invoices_and_clients(
                 invoice = invoice_service.get_invoice_by_external_id(
                     document_id)
                 new_amount = 0
+                invoice_was_created = False
                 if not invoice:
                     try:
                         # If the document is a credit note, we need to negate the total amount
@@ -261,6 +264,7 @@ async def sync_invoices_and_clients(
                         invoice = _create_invoice(
                             document, client, invoice_service)
                         new_amount = invoice.total_amount
+                        invoice_was_created = True
                     except Exception as e:
                         logger.error(
                             f"Error creating invoice for document_id {document_id}: {e}")
@@ -317,6 +321,10 @@ async def sync_invoices_and_clients(
                 ))
 
                 processed_count += 1
+                if invoice_was_created:
+                    created_count += 1
+                else:
+                    updated_count += 1
 
             except Exception as e:
                 error_count += 1
@@ -341,7 +349,10 @@ async def sync_invoices_and_clients(
                         f"Failed to log integration error: {log_error}")
         return {
             "success": True,
+            "total_received": len(documents),
             "processed": processed_count,
+            "created": created_count,
+            "updated": updated_count,
             "skipped": skipped_count,
             "errors": error_count,
             "error_details": errors
