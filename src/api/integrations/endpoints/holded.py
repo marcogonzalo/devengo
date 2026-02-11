@@ -39,7 +39,7 @@ def get_holded_client():
 
 
 def accepted_service(service):
-    return str(service.get("accountNum")).startswith("705000") and (
+    return str(service.get("accountNum")).startswith("7050") and (
         service.get("name")[0:2] == "ES" or service.get("name")[0:2] == "EU")
 
 
@@ -62,6 +62,7 @@ def _create_client(contact, client_service):
 
     client_service.add_external_id(client.id, external_id_data)
     return client
+
 
 def _is_credit_note(document):
     return document.get("docNumber").startswith("CN") and document.get("from", {}).get("docType", "") == "invoice"
@@ -255,7 +256,8 @@ async def sync_invoices_and_clients(
                     try:
                         # If the document is a credit note, we need to negate the total amount
                         if _is_credit_note(document):
-                            document["total"] = -abs(float(document.get("total", 0)))
+                            document["total"] = - \
+                                abs(float(document.get("total", 0)))
                         invoice = _create_invoice(
                             document, client, invoice_service)
                         new_amount = invoice.total_amount
@@ -299,7 +301,8 @@ async def sync_invoices_and_clients(
                 # Handle contract accrual updates for new invoices
                 # Note: For ACTIVE accruals, the update_contract_amount method now handles this automatically
                 # For COMPLETED accruals, we still need to reactivate them manually
-                contract_accrual = getattr(service_contract, 'contract_accrual', None)
+                contract_accrual = getattr(
+                    service_contract, 'contract_accrual', None)
                 if contract_accrual and contract_accrual.accrual_status == ContractAccrualStatus.COMPLETED and new_amount != 0:
                     # Reactivate completed accrual when new invoices arrive
                     contract_accrual.accrual_status = ContractAccrualStatus.ACTIVE
@@ -319,7 +322,7 @@ async def sync_invoices_and_clients(
                 error_count += 1
                 errors.append(str(e))
                 logging.error(f"Error creating invoice: {e}")
-                
+
                 # Log to integration errors table
                 try:
                     log_integration_error(
@@ -328,12 +331,14 @@ async def sync_invoices_and_clients(
                         external_id=str(document_id),
                         entity_type="invoice",
                         error_message=str(e),
-                        error_details={"document_data": document, "client_id": client.id if client else None},
+                        error_details={"document_data": document,
+                                       "client_id": client.id if client else None},
                         client_id=client.id if client else None,
                         db=invoice_service.db
                     )
                 except Exception as log_error:
-                    logger.error(f"Failed to log integration error: {log_error}")
+                    logger.error(
+                        f"Failed to log integration error: {log_error}")
         return {
             "success": True,
             "processed": processed_count,
@@ -356,7 +361,7 @@ async def sync_invoices_and_clients(
             )
         except Exception as log_error:
             logger.error(f"Failed to log integration error: {log_error}")
-        
+
         raise HTTPException(
             status_code=500,
             detail=f"Failed to sync invoices: {str(e)}"
@@ -463,7 +468,7 @@ async def sync_services(
                 error_count += 1
                 error_msg = str(e)
                 errors.append(error_msg)
-                
+
                 # Log the error to our integration error table
                 try:
                     log_integration_error(
@@ -476,8 +481,9 @@ async def sync_services(
                         db=db
                     )
                 except Exception as log_error:
-                    logger.error(f"Failed to log integration error: {log_error}")
-        
+                    logger.error(
+                        f"Failed to log integration error: {log_error}")
+
         return {
             "success": True,
             "created": created_count,
@@ -500,7 +506,7 @@ async def sync_services(
             )
         except Exception as log_error:
             logger.error(f"Failed to log integration error: {log_error}")
-        
+
         raise HTTPException(
             status_code=500,
             detail=f"Failed to sync services: {str(e)}"
