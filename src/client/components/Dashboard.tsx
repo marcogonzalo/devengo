@@ -7,6 +7,7 @@ import ClientManagement from './ClientManagement';
 import AccrualOverview from './AccrualOverview';
 import AccrualReports from './AccrualReports';
 import IntegrationErrors from './IntegrationErrors';
+import SyncManagement from './SyncManagement';
 
 const Dashboard: React.FC = () => {
   const { theme, setTheme } = useTheme();
@@ -35,6 +36,9 @@ const Dashboard: React.FC = () => {
           <NavbarItem>
             <Link to="/dashboard/errors" className="text-foreground">Integration Errors</Link>
           </NavbarItem>
+          <NavbarItem>
+            <Link to="/dashboard/sync" className="text-foreground">Sync Management</Link>
+          </NavbarItem>
         </NavbarContent>
         <NavbarContent justify="end">
           <NavbarItem>
@@ -61,6 +65,7 @@ const Dashboard: React.FC = () => {
           <Route path="/clients" element={<ClientManagement />} />
           <Route path="/reports" element={<AccrualReports />} />
           <Route path="/errors" element={<IntegrationErrors />} />
+          <Route path="/sync" element={<SyncManagement />} />
         </Routes>
       </main>
     </div>

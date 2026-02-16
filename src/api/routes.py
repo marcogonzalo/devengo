@@ -11,6 +11,7 @@ from src.api.integrations.endpoints.holded import router as holded_router
 from src.api.integrations.endpoints.fourgeeks import router as fourgeeks_router
 from src.api.integrations.endpoints.notion import router as notion_router
 from src.api.integrations.endpoints.integration_errors import router as integration_errors_router
+from src.api.sync.endpoints.sync_management import router as sync_management_router
 
 api_router = APIRouter()
 
@@ -27,6 +28,9 @@ api_router.include_router(holded_router)
 api_router.include_router(fourgeeks_router)
 api_router.include_router(notion_router)
 api_router.include_router(integration_errors_router)
+
+# sync management
+api_router.include_router(sync_management_router, prefix="/sync")
 
 
 @api_router.route('/hello', methods=['POST', 'GET'])

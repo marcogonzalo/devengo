@@ -1,8 +1,8 @@
 """Add ignored fields to integration_errors table
 
-Revision ID: 20250117170000
+Revision ID: 20250812170000
 Revises: a5f8dbb7e84c
-Create Date: 2025-01-17 17:00:00.000000
+Create Date: 2025-08-12 17:00:00.000000
 
 """
 from typing import Sequence, Union
@@ -13,7 +13,7 @@ import sqlmodel
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision: str = '20250117170000'
+revision: str = '45f8db7dec84'
 down_revision: Union[str, None] = 'a5f8dbb7e84c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
