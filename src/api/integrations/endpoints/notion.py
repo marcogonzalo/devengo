@@ -96,7 +96,33 @@ async def sync_page_ids_from_clients(
             try:
                 page_id = await notion_client.get_page_id(db_id, "Email", identifier)
             except Exception as e:
-                error_msg = f"Error querying Notion: {str(e)}"
+                # Get full error message including exception type and details
+                error_type = type(e).__name__
+                error_str = str(e)
+                # Try to get more details from the exception
+                error_details_dict = {
+                    "client_id": client.id,
+                    "identifier": identifier,
+                    "error_type": error_type,
+                    "error_message": error_str
+                }
+
+                # If it's an HTTPException, try to extract the detail
+                if hasattr(e, 'detail'):
+                    error_details_dict["http_detail"] = str(e.detail)
+                    error_msg = f"Error querying Notion: {error_type}: {e.detail}"
+                elif hasattr(e, 'response') and hasattr(e.response, 'text'):
+                    # Try to get response text if available
+                    try:
+                        response_text = e.response.text if hasattr(
+                            e.response, 'text') else str(e.response)
+                        error_details_dict["response_text"] = response_text
+                        error_msg = f"Error querying Notion: {error_type}: {error_str}. Response: {response_text}"
+                    except:
+                        error_msg = f"Error querying Notion: {error_type}: {error_str}"
+                else:
+                    error_msg = f"Error querying Notion: {error_type}: {error_str}"
+
                 not_found.append({
                     "client_id": client.id,
                     "identifier": identifier,
@@ -112,12 +138,13 @@ async def sync_page_ids_from_clients(
                         external_id=str(client.id),
                         entity_type="client",
                         error_message=error_msg,
-                        error_details={"client_id": client.id, "identifier": identifier},
+                        error_details=error_details_dict,
                         client_id=client.id,
                         db=db
                     )
                 except Exception as log_error:
-                    logger.error(f"Failed to log integration error: {log_error}")
+                    logger.error(
+                        f"Failed to log integration error: {log_error}")
 
                 continue
             if not page_id:
@@ -160,6 +187,6 @@ async def sync_page_ids_from_clients(
             )
         except Exception as log_error:
             logger.error(f"Failed to log integration error: {log_error}")
-        
+
         raise HTTPException(
             status_code=500, detail=f"Failed to sync Notion page IDs: {str(e)}")

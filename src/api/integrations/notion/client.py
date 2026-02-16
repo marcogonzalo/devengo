@@ -51,9 +51,28 @@ class NotionClient:
                 return None
             return results[0]["id"]
         except httpx.HTTPStatusError as e:
-            raise HTTPException(status_code=500, detail=f"HTTP error: {e}")
+            # Extract detailed error information from the HTTP response
+            error_detail = f"{e.response.status_code}: "
+            try:
+                error_response = e.response.json()
+                if isinstance(error_response, dict):
+                    error_detail += error_response.get(
+                        "message", str(error_response))
+                else:
+                    error_detail += str(error_response)
+            except:
+                try:
+                    error_detail += e.response.text[:500]  # Limit to 500 chars
+                except:
+                    error_detail += str(e)
+            raise HTTPException(
+                status_code=e.response.status_code, detail=error_detail)
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error: {e}")
+            error_detail = f"Error: {str(e)}"
+            # Include exception type for better debugging
+            if hasattr(e, '__class__'):
+                error_detail = f"{type(e).__name__}: {error_detail}"
+            raise HTTPException(status_code=500, detail=error_detail)
 
     async def get_page_by_email(self, database_id: str, property_name: str, value: str):
         url = f"{self.base_url}/databases/{database_id}/query"
