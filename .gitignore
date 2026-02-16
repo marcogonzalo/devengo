@@ -25,6 +25,7 @@ node_modules
 dist
 dist-ssr
 *.local
+/*.sql
 
 # Editor directories and files
 .vscode/*

@@ -12,7 +12,8 @@ from src.api.services.services.service_service import ServiceService
 from src.api.services.services.service_contract import ServiceContractService
 from src.api.services.schemas.service_period import ServicePeriodCreate
 from src.api.services.utils import (
-    get_service_type_from_service_name, 
+    get_service_type_from_service_name,
+    get_service_type_from_service_period_name,
     validate_service_period_compatibility
 )
 from src.api.common.utils.datetime import get_date
@@ -99,11 +100,16 @@ class EnrollmentProcessor:
     def _validate_enrollment(self, cohort: dict) -> bool:
         cohort_slug = cohort.get("slug")
         cohort_ending_date = cohort.get("ending_date")
-        if cohort_slug and cohort_ending_date and cohort_slug != "yomequedoencasa":
-            return True
-
-        self.stats["skipped"] += 1
-        return False
+        if not cohort_slug or not cohort_ending_date:
+            self.stats["skipped"] += 1
+            return False
+        if cohort_slug == "yomequedoencasa":
+            self.stats["skipped"] += 1
+            return False
+        if cohort_slug.endswith("-pt-general"):
+            self.stats["skipped"] += 1
+            return False
+        return True
 
     def _validate_service_period_compatibility(self, cohort_slug: str, contract_id: int) -> bool:
         """
@@ -128,7 +134,7 @@ class EnrollmentProcessor:
                 return False
 
             # Get program types
-            cohort_service_type = get_service_type_from_service_name(cohort_slug)
+            cohort_service_type = get_service_type_from_service_period_name(cohort_slug)
             service_service_type = service.computed_service_type
 
             # Validate compatibility

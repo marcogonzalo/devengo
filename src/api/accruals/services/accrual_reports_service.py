@@ -33,7 +33,7 @@ class AccrualReportsService:
         """
         # Step 1: Get all service contracts with their related entities
         # Include contracts without service periods but that have accruals in the date range
-        
+
         # First, get contract accrual IDs that have been accrued in the date range
         accrued_contract_ids_subquery = (
             self.db.query(AccruedPeriod.contract_accrual_id)
@@ -43,7 +43,7 @@ class AccrualReportsService:
             )
             .distinct()
         )
-        
+
         query = (
             self.db.query(
                 ServiceContract,
@@ -54,14 +54,16 @@ class AccrualReportsService:
             )
             .join(ServiceContract.client)
             .join(ServiceContract.service)
-            .outerjoin(ServiceContract.periods)  # Left join to include contracts without periods
-            .outerjoin(ServiceContract.contract_accrual)  # Left join to include contracts without contract accruals
+            # Left join to include contracts without periods
+            .outerjoin(ServiceContract.periods)
+            # Left join to include contracts without contract accruals
+            .outerjoin(ServiceContract.contract_accrual)
             .filter(
                 # Include if any of these conditions are met:
-                
+
                 # Condition 1: Contract has at least one accrued period in the date range
                 (ContractAccrual.id.in_(accrued_contract_ids_subquery)) |
-                
+
                 # Condition 2: Contract has contract_date before or during end_date AND
                 # (contract is active OR contract accrual is not completed)
                 (
@@ -78,7 +80,7 @@ class AccrualReportsService:
             .order_by(
                 # Group by accrual status and activity:
                 # 1. Contracts with accrued periods in the date range (priority)
-                # 2. Active contracts 
+                # 2. Active contracts
                 # 3. Contracts with incomplete accruals
                 # 4. Contracts without accruals yet
                 case(
@@ -86,7 +88,8 @@ class AccrualReportsService:
                     (ServiceContract.status == ServiceContractStatus.ACTIVE, 2),
                     (
                         (ContractAccrual.id.isnot(None)) &
-                        (ContractAccrual.accrual_status != ContractAccrualStatus.COMPLETED), 3
+                        (ContractAccrual.accrual_status !=
+                         ContractAccrualStatus.COMPLETED), 3
                     ),
                     (ContractAccrual.id.is_(None), 4),
                     else_=5  # Fallback for any other cases
@@ -129,23 +132,24 @@ class AccrualReportsService:
         # Organize accruals by contract_accrual_id, service_period_id, and month
         # service_period_id can be None for accruals without associated periods
         # contract_accrual_id should always exist for accrued periods, but handling defensively
-        
+
         # First pass: organize accruals normally
         for accrual in accruals:
             month_key = f"{accrual.accrual_date.year}-{accrual.accrual_date.month:02d}"
             key = (accrual.contract_accrual_id, accrual.service_period_id)
             accruals_by_contract_period[key][month_key] = accrual.accrued_amount
-        
+
         # Second pass: redistribute NULL service_period_id accruals to their corresponding periods
         # This handles final accruals (status=ENDED, accrual_portion=1.0) that have service_period_id=NULL
         null_period_accruals = []
         for accrual in accruals:
             if accrual.service_period_id is None:
                 null_period_accruals.append(accrual)
-        
+
         for null_accrual in null_period_accruals:
             # Find the service period that contains this accrual date for this contract
-            contract_accrual = self.db.get(ContractAccrual, null_accrual.contract_accrual_id)
+            contract_accrual = self.db.get(
+                ContractAccrual, null_accrual.contract_accrual_id)
             if contract_accrual:
                 # Look for service periods that overlap with this accrual date
                 overlapping_periods = self.db.query(ServicePeriod).filter(
@@ -153,50 +157,56 @@ class AccrualReportsService:
                     ServicePeriod.start_date <= null_accrual.accrual_date,
                     ServicePeriod.end_date >= null_accrual.accrual_date
                 ).all()
-                
+
                 if overlapping_periods:
                     # Move the accrual amount from NULL period to the correct period
                     target_period = overlapping_periods[0]
                     month_key = f"{null_accrual.accrual_date.year}-{null_accrual.accrual_date.month:02d}"
-                    
+
                     # Remove from NULL key
                     null_key = (null_accrual.contract_accrual_id, None)
                     if null_key in accruals_by_contract_period and month_key in accruals_by_contract_period[null_key]:
                         amount = accruals_by_contract_period[null_key][month_key]
                         del accruals_by_contract_period[null_key][month_key]
-                        
+
                         # Add to correct period key
-                        correct_key = (null_accrual.contract_accrual_id, target_period.id)
+                        correct_key = (
+                            null_accrual.contract_accrual_id, target_period.id)
                         if correct_key not in accruals_by_contract_period:
                             accruals_by_contract_period[correct_key] = {}
-                        accruals_by_contract_period[correct_key][month_key] = accruals_by_contract_period[correct_key].get(month_key, 0.0) + amount
+                        accruals_by_contract_period[correct_key][month_key] = accruals_by_contract_period[correct_key].get(
+                            month_key, 0.0) + amount
                 else:
                     # No overlapping periods found - try to find the most recent service period
                     # This handles cases where accruals happen after service periods have ended
                     most_recent_period = self.db.query(ServicePeriod).filter(
                         ServicePeriod.contract_id == contract_accrual.contract_id
                     ).order_by(ServicePeriod.end_date.desc()).first()
-                    
+
                     if most_recent_period:
                         # Move the accrual amount to the most recent period
                         month_key = f"{null_accrual.accrual_date.year}-{null_accrual.accrual_date.month:02d}"
-                        
+
                         # Remove from NULL key
                         null_key = (null_accrual.contract_accrual_id, None)
                         if null_key in accruals_by_contract_period and month_key in accruals_by_contract_period[null_key]:
                             amount = accruals_by_contract_period[null_key][month_key]
                             del accruals_by_contract_period[null_key][month_key]
-                            
+
                             # Add to most recent period key
-                            correct_key = (null_accrual.contract_accrual_id, most_recent_period.id)
+                            correct_key = (
+                                null_accrual.contract_accrual_id, most_recent_period.id)
                             if correct_key not in accruals_by_contract_period:
                                 accruals_by_contract_period[correct_key] = {}
-                            accruals_by_contract_period[correct_key][month_key] = accruals_by_contract_period[correct_key].get(month_key, 0.0) + amount
-                        
-                        print(f"Redistributed NULL accrual {null_accrual.id} to most recent period {most_recent_period.id} (ended {most_recent_period.end_date})")
+                            accruals_by_contract_period[correct_key][month_key] = accruals_by_contract_period[correct_key].get(
+                                month_key, 0.0) + amount
+
+                        print(
+                            f"Redistributed NULL accrual {null_accrual.id} to most recent period {most_recent_period.id} (ended {most_recent_period.end_date})")
                     else:
                         # No service periods found at all - keep the NULL accrual as is
-                        print(f"Warning: No service periods found for NULL accrual {null_accrual.id} on {null_accrual.accrual_date}")
+                        print(
+                            f"Warning: No service periods found for NULL accrual {null_accrual.id} on {null_accrual.accrual_date}")
 
         # Step 3: Organize data for CSV export
         csv_data = []
@@ -205,7 +215,7 @@ class AccrualReportsService:
         for contract, client, service, period, contract_accrual in results:
             # Check if this is the first occurrence of this contract
             is_first_occurrence = contract.id != previous_contract_id
-            
+
             row = {
                 "Contract start date": contract.contract_date if is_first_occurrence else "",
                 "Client": client.name if is_first_occurrence else "",
@@ -233,7 +243,7 @@ class AccrualReportsService:
                 row[month_name] = period_accruals.get(month_key, 0.0)
 
             csv_data.append(row)
-            
+
             # Update the previous contract ID
             previous_contract_id = contract.id
 
@@ -267,15 +277,15 @@ class AccrualReportsService:
 
         output.seek(0)
         return output
-    
+
     def get_dashboard_summary(self, year: Optional[int] = None) -> Dict[str, Any]:
         """
         Get dashboard summary statistics for the accruals overview.
-        
+
         Args:
             year: Optional year to filter by. If None, returns all data.
                   If provided, returns data for that specific year only.
-        
+
         Returns:
             Dictionary containing:
             - total_contracts: Total number of service contracts
@@ -293,12 +303,12 @@ class AccrualReportsService:
                 ServiceContractStatus.CLOSED
             ]))
         )
-        
+
         # Apply year filter if provided
         if year is not None:
             year_start = date(year, 1, 1)
             year_end = date(year, 12, 31)
-            
+
             # Include contracts that either:
             # 1. Have contract_date in the target year, OR
             # 2. Have accrued periods in the target year
@@ -311,7 +321,7 @@ class AccrualReportsService:
                 )
                 .distinct()
             )
-            
+
             contracts_query = contracts_query.filter(
                 or_(
                     (ServiceContract.contract_date >= year_start) &
@@ -319,22 +329,23 @@ class AccrualReportsService:
                     ContractAccrual.id.in_(contracts_with_accruals_in_year)
                 )
             )
-        
+
         contracts = contracts_query.all()
-        
+
         # Calculate totals
         total_contracts = len(contracts)
-        total_amount = sum(contract.contract_amount for contract, _ in contracts)
-        
+        total_amount = sum(
+            contract.contract_amount for contract, _ in contracts)
+
         # Calculate accrued and pending amounts
         accrued_amount = 0.0
         pending_amount = 0.0
-        
+
         for contract, contract_accrual in contracts:
             if contract_accrual:
                 # Total accrued is the difference between total to accrue and remaining
                 accrued_this_contract = (
-                    contract_accrual.total_amount_to_accrue - 
+                    contract_accrual.total_amount_to_accrue -
                     contract_accrual.remaining_amount_to_accrue
                 )
                 accrued_amount += accrued_this_contract
@@ -342,7 +353,7 @@ class AccrualReportsService:
             else:
                 # No accrual record yet, so everything is pending
                 pending_amount += contract.contract_amount
-        
+
         return {
             "total_contracts": total_contracts,
             "total_amount": total_amount,
@@ -353,17 +364,19 @@ class AccrualReportsService:
     def get_available_years(self) -> List[int]:
         """
         Get all years that have service contracts, from oldest to current year.
-        
+
         Returns:
             List of years sorted from current year to oldest
         """
         from sqlalchemy import func, extract
-        
+
         # Get the oldest and newest contract years
         result = (
             self.db.query(
-                func.min(extract('year', ServiceContract.contract_date)).label('min_year'),
-                func.max(extract('year', ServiceContract.contract_date)).label('max_year')
+                func.min(extract('year', ServiceContract.contract_date)).label(
+                    'min_year'),
+                func.max(extract('year', ServiceContract.contract_date)).label(
+                    'max_year')
             )
             .filter(ServiceContract.status.in_([
                 ServiceContractStatus.ACTIVE,
@@ -372,19 +385,19 @@ class AccrualReportsService:
             ]))
             .first()
         )
-        
+
         if not result or not result.min_year:
             # No contracts found, return current year
             current_year = date.today().year
             return [current_year]
-        
+
         min_year = int(result.min_year)
         max_year = int(result.max_year)
         current_year = date.today().year
-        
+
         # Ensure we include current year even if no contracts this year
         max_year = max(max_year, current_year)
-        
+
         # Return years from current to oldest
         years = list(range(max_year, min_year - 1, -1))
         return years
@@ -392,18 +405,18 @@ class AccrualReportsService:
     def get_monthly_accruals(self, year: int) -> Dict[str, Any]:
         """
         Get monthly accrual amounts for a specific year.
-        
+
         Args:
             year: Year to get monthly data for
-            
+
         Returns:
             Dictionary containing monthly accrual data
         """
         from sqlalchemy import func, extract
-        
+
         year_start = date(year, 1, 1)
         year_end = date(year, 12, 31)
-        
+
         # Get monthly accrual amounts from AccruedPeriod table
         monthly_query = (
             self.db.query(
@@ -417,31 +430,31 @@ class AccrualReportsService:
             .group_by(extract('month', AccruedPeriod.accrual_date))
             .order_by(extract('month', AccruedPeriod.accrual_date))
         )
-        
+
         results = monthly_query.all()
-        
+
         # Create a dictionary with all 12 months initialized to 0
         monthly_data = {}
         month_names = [
             'January', 'February', 'March', 'April', 'May', 'June',
             'July', 'August', 'September', 'October', 'November', 'December'
         ]
-        
+
         for i, month_name in enumerate(month_names, 1):
             monthly_data[month_name] = {
                 'month': month_name,
                 'month_number': i,
                 'amount': 0.0
             }
-        
+
         # Fill in actual data
         for month_num, total_amount in results:
             month_name = month_names[int(month_num) - 1]
             monthly_data[month_name]['amount'] = float(total_amount or 0.0)
-        
+
         # Convert to list for consistent ordering
         monthly_list = [monthly_data[month_name] for month_name in month_names]
-        
+
         return {
             'year': year,
             'monthly_data': monthly_list,

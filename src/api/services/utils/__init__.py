@@ -2,7 +2,7 @@
 Utility functions for service-related operations
 """
 
-from api.common.constants.service_types import (
+from src.api.common.constants.service_types import (
     ServiceType,
     SERVICE_TYPE_NAMES,
     SERVICE_KEYWORDS,
@@ -99,12 +99,12 @@ def classify_service_type(text: str, source_type: str = "auto") -> str:
     if source_type == "service":
         return get_service_type_from_service_name(text)
     elif source_type == "cohort":
-        return get_service_type_from_service_name(text)
+        return get_service_type_from_service_period_name(text)
     else:
         # Try both approaches and return the first match
         service_result = get_service_type_from_service_name(text)
         if service_result != ServiceType.UNKNOWN:
             return service_result
         
-        cohort_result = get_service_type_from_service_name(text)
+        cohort_result = get_service_type_from_service_period_name(text)
         return cohort_result 

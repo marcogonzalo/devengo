@@ -13,8 +13,8 @@ from src.api.services.models.service import Service
 from src.api.services.models.service_contract import ServiceContract
 from src.api.services.models.service_period import ServicePeriod
 from src.api.services.utils import (
-    get_service_type_from_service_name, 
     get_service_type_from_service_name,
+    get_service_type_from_service_period_name,
     validate_service_period_compatibility
 )
 from src.api.clients.models.client import Client
@@ -69,7 +69,7 @@ def find_compatibility_issues(db: Session):
         if not cohort_slug:
             continue
             
-        cohort_service_type = get_service_type_from_service_name(cohort_slug)
+        cohort_service_type = get_service_type_from_service_period_name(cohort_slug)
         service_service_type = service.service_type or get_service_type_from_service_name(service.name)
         
         if cohort_service_type != service_service_type and cohort_service_type != "UNKNOWN":

@@ -1,0 +1,140 @@
+- Get all ServiceContracts
+- ServiceContract status: ACTIVE
+    - Check ContractAccrual status
+        - COMPLETE
+            - Update ServiceContract
+                - to CLOSED if total to accrue > 0
+                - to CANCELED if total to accrue <= 0
+        - ACTIVE | PAUSED | Not found
+            - Has ServicePeriod?
+                - NO
+                    - Found in Notion
+                        - NO
+                            - Contract date <= 15 days?
+                                - Notify not congruent status
+                                    - Possibly a client missing in CRM?
+                                - Ignore
+                            - Contract date > 15 days? (Contract resigned)
+                                - Create ContractAccrual if necessary
+                                - Accrue fully
+                                - Update ContractAccrual as COMPLETE
+                                - Update ServiceContract as CANCELED
+                        - YES
+                            - Educational Status equivalent to ENDED
+                                - NO
+                                    - Contract date <= 15 days?
+                                        - Ignore
+                                    - Contract date > 15 days?
+                                        - Notify not congruent status
+                                            - Reminder about client without service period in CRM
+                                        - Ignore
+                                - YES
+                                    - Check if status change date is previous to end of the month overlap
+                                        - NO
+                                            - Ignore
+                                        - YES
+                                            - Create ContractAccrual if necessary
+                                            - Accrue fully
+                                            - Update ContractAccrual as COMPLETE
+                                            - Update ServiceContract
+                                                - to CLOSED if compatible with ServicePeriodStatus.ENDED
+                                                - to CANCELED if compatible with ServicePeriodStatus.DROPPED
+                - YES
+                    - ServicePeriod Status
+                        - ACTIVE
+                            - Check month overlap
+                                - NO
+                                    - Ignore
+                                - YES
+                                    - Accrue the respective portion
+                                    - Update ContractAccrual if necessary
+                        - POSTPONED
+                            - Check month overlap
+                                - NO
+                                    - Ignore
+                                - YES
+                                    - Accrue portion normally, until status change date
+                                    - Update ContractAccrual to PAUSED if ACTIVE
+                        - DROPPED
+                            - Check month overlap
+                                - NO
+                                    - Ignore
+                                - YES
+                                    - Accrue fully in status change date
+                                    - Update ContractAccrual to COMPLETE
+                                    - Update ServiceContract to CANCELED
+                        - GRADUATED | NOT_COMPLETING
+                            - Check month overlap
+                                - NO
+                                    - Ignore
+                                - YES
+                                    - Accrue the remaining amount
+                                    - Update ContractAccrual to COMPLETE
+                                    - Update ServiceContract to CLOSED
+- ServiceContract status: CANCELED
+    - Check ContractAccrual status
+        - COMPLETE
+            - Ignore
+        - ACTIVE | PAUSED | Not found
+            - Has a ServicePeriod?
+                - NO
+                    - Found in Notion
+                        - NO (Contract resigned)
+                            - Create ContractAccrual if necessary
+                            - Accrue fully
+                            - Update ContractAccrual as COMPLETE
+                            - Update ServiceContract as CANCELED
+                        - YES
+                            - Educational Status equivalent to ENDED
+                                - NO
+                                    - Notify not congruent status
+                                    - Ignore
+                                - YES
+                                    - Create ContractAccrual if necessary
+                                    - Accrue fully
+                                    - Update ContractAccrual as COMPLETE
+                                    - Update ServiceContract as CLOSED
+                - YES
+                    - ServicePeriod Status
+                        - ACTIVE | ENDED
+                            - Notify not congruent status
+                                - Contract canceled but client doesn't have DROPPED service periods
+                        - DROPPED | POSTPONED
+                            - Create ContractAccrual if necessary
+                            - Accrue fully
+                            - Update ContractAccrual as COMPLETE
+                            - Update ServiceContract as CANCELED
+- ServiceContract status: CLOSED
+    - Check ContractAccrual status
+        - COMPLETE
+            - Ignore
+        - ACTIVE | PAUSED | Not found
+            - Has ServicePeriod?
+                - NO
+                    - Found in Notion
+                        - NO
+                            - Notify not congruent status
+                                - Contract closed but client don't have service periods
+                            - Ignore
+                        - YES
+                            - Educational Status equivalent to ENDED
+                                - NO
+                                    - Notify not congruent status
+                                        - Contract closed but client doesn't have ENDED service periods
+                                    - Ignore
+                                - YES
+                                    - Create ContractAccrual if necessary
+                                    - Accrue fully
+                                    - Update ContractAccrual as COMPLETE
+                                    - Update ServiceContract as CLOSED
+                - YES
+                    - ServicePeriod Status
+                        - ACTIVE | POSTPONED | DROPPED
+                            - Notify not congruent status
+                                - Contract closed but client doesn't have ACTIVE service periods
+                            - Ignore
+                        - ENDED
+                            - Create ContractAccrual if necessary
+                            - Accrue fully
+                            - Update ContractAccrual as COMPLETE
+                            - Update ServiceContract as CLOSED
