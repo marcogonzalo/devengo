@@ -122,44 +122,8 @@ const AccrualOverview: React.FC = () => {
         }
       />
 
-      {/* Total */}
-      <section>
-        <h2
-          className="text-sm font-semibold uppercase tracking-wider mb-3"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          All time
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            label="Total Contracts"
-            value={overviewData.total_contracts}
-            icon="lucide:file-text"
-            color="blue"
-          />
-          <StatCard
-            label="Contract Amount"
-            value={formatCurrency(overviewData.total_amount)}
-            icon="lucide:euro"
-            color="green"
-          />
-          <StatCard
-            label="Accrued Amount"
-            value={formatCurrency(overviewData.accrued_amount)}
-            icon="lucide:check-circle"
-            color="cyan"
-          />
-          <StatCard
-            label="Pending Amount"
-            value={formatCurrency(overviewData.pending_amount)}
-            icon="lucide:clock"
-            color="amber"
-          />
-        </div>
-      </section>
-
       {/* Current year */}
-      <section>
+      <section className="bg-white/20 dark:bg-white/10 rounded-xl p-4">
         <h2
           className="text-sm font-semibold uppercase tracking-wider mb-3"
           style={{ color: "var(--muted-foreground)" }}
@@ -177,18 +141,18 @@ const AccrualOverview: React.FC = () => {
             label="Contract Amount"
             value={formatCurrency(currentYearData.total_amount)}
             icon="lucide:euro"
-            color="green"
+            color="blue"
           />
           <StatCard
             label="Accrued Amount"
             value={formatCurrency(currentYearData.accrued_amount)}
-            icon="lucide:check-circle"
-            color="cyan"
+            icon="lucide:euro"
+            color="green"
           />
           <StatCard
             label="Pending Amount"
             value={formatCurrency(currentYearData.pending_amount)}
-            icon="lucide:clock"
+            icon="lucide:euro"
             color="amber"
           />
         </div>
@@ -213,18 +177,60 @@ const AccrualOverview: React.FC = () => {
             label="Contract Amount"
             value={formatCurrency(lastYearData.total_amount)}
             icon="lucide:euro"
-            color="green"
+            color="blue"
           />
           <StatCard
             label="Accrued Amount"
             value={formatCurrency(lastYearData.accrued_amount)}
-            icon="lucide:check-circle"
-            color="cyan"
+            icon="lucide:euro"
+            color="green"
           />
           <StatCard
             label="Pending Amount"
             value={formatCurrency(lastYearData.pending_amount)}
-            icon="lucide:clock"
+            icon="lucide:euro"
+            color="amber"
+          />
+        </div>
+      </section>
+
+      {/* Total */}
+      <section
+        style={{
+          backgroundColor: "rgba(153,153,153,0.1)",
+          borderRadius: "0.75rem",
+          padding: "1rem",
+        }}
+      >
+        <h2
+          className="text-sm font-semibold uppercase tracking-wider mb-3"
+          style={{ color: "var(--muted-foreground)" }}
+        >
+          All time
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            label="Total Contracts"
+            value={overviewData.total_contracts}
+            icon="lucide:file-text"
+            color="blue"
+          />
+          <StatCard
+            label="Contract Amount"
+            value={formatCurrency(overviewData.total_amount)}
+            icon="lucide:euro"
+            color="blue"
+          />
+          <StatCard
+            label="Accrued Amount"
+            value={formatCurrency(overviewData.accrued_amount)}
+            icon="lucide:euro"
+            color="green"
+          />
+          <StatCard
+            label="Pending Amount"
+            value={formatCurrency(overviewData.pending_amount)}
+            icon="lucide:euro"
             color="amber"
           />
         </div>

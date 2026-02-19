@@ -49,7 +49,7 @@
   --sidebar-ring: hsl(207.4 92.7% 42.7%);
 }
 
-.dark {
+html.dark {
   --background: hsl(222.2 84% 4.9%);
   --foreground: hsl(210 40% 98%);
   --card: hsl(222.2 84% 4.9%);
@@ -84,13 +84,13 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Sidebar nav item active state - matches 4Geeks .nav-item.active */
+/* Sidebar nav item active state */
 .nav-item.active {
   background-color: hsl(207.4 92.7% 95%);
   color: hsl(207.4 92.7% 30%);
 }
 
-.dark .nav-item.active {
+html.dark .nav-item.active {
   background-color: hsl(207.4 92.7% 15%);
   color: hsl(207.4 92.7% 70%);
 }

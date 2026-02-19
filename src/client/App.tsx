@@ -6,9 +6,9 @@ import Login from "./components/Login";
 import Dashboard from "./components/Dashboard";
 
 const AppContent: React.FC = () => {
-  const { theme, setTheme } = useTheme();
+  const { setTheme } = useTheme();
 
-  // Default to light mode (4Geeks style) on first load
+  // Default to light mode on first load if no preference stored
   useEffect(() => {
     const stored = localStorage.getItem("heroui-theme");
     if (!stored) {
@@ -17,7 +17,7 @@ const AppContent: React.FC = () => {
   }, []);
 
   return (
-    <div className={`${theme} min-h-screen bg-background text-foreground`}>
+    <div className="min-h-screen bg-background text-foreground">
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/dashboard/*" element={<Dashboard />} />
