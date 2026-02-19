@@ -23,6 +23,7 @@ import {
   Textarea,
   Tooltip,
   useDisclosure,
+  type Selection,
 } from "@heroui/react";
 import {
   integrationErrorsApi,
@@ -55,9 +56,7 @@ const IntegrationErrors: React.FC = () => {
   const [errors, setErrors] = useState<IntegrationErrorRead[]>([]);
   const [summary, setSummary] = useState<IntegrationErrorSummary | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedErrors, setSelectedErrors] = useState<"all" | Set<React.Key>>(
-    new Set(),
-  );
+  const [selectedErrors, setSelectedErrors] = useState<Selection>(new Set());
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     integrations: [],
     operations: [],
@@ -167,7 +166,7 @@ const IntegrationErrors: React.FC = () => {
   };
 
   // Handle selection
-  const handleSelectionChange = (keys: "all" | Set<React.Key>) => {
+  const handleSelectionChange = (keys: Selection) => {
     setSelectedErrors(keys);
   };
 
@@ -188,7 +187,7 @@ const IntegrationErrors: React.FC = () => {
         notes,
       );
       if (response.data) {
-        setSelectedErrors(new Set<React.Key>());
+        setSelectedErrors(new Set());
         setResolveNotes("");
         onResolveModalClose();
         fetchData(); // Refresh data
@@ -206,7 +205,7 @@ const IntegrationErrors: React.FC = () => {
       try {
         const response = await integrationErrorsApi.bulkIgnoreErrors(errorIds);
         if (response.data) {
-          setSelectedErrors(new Set<React.Key>());
+          setSelectedErrors(new Set());
           fetchData(); // Refresh data
         }
       } catch (error) {
@@ -249,7 +248,7 @@ const IntegrationErrors: React.FC = () => {
         const response =
           await integrationErrorsApi.bulkIgnoreErrors(selectedIds);
         if (response.data) {
-          setSelectedErrors(new Set<React.Key>());
+          setSelectedErrors(new Set());
           fetchData(); // Refresh data
         }
       } catch (error) {
@@ -273,7 +272,7 @@ const IntegrationErrors: React.FC = () => {
           integrationErrorsApi.deleteError(errorId),
         );
         await Promise.all(deletePromises);
-        setSelectedErrors(new Set<React.Key>());
+        setSelectedErrors(new Set());
         fetchData(); // Refresh data
       } catch (error) {
         console.error("Error deleting errors:", error);
