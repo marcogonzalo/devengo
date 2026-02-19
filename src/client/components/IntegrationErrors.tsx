@@ -31,6 +31,8 @@ import {
   IntegrationErrorSummary,
 } from "../utils/api";
 import { Icon } from "@iconify/react";
+import PageHeader from "./ui/PageHeader";
+import StatCard from "./ui/StatCard";
 
 interface PaginationState {
   page: number;
@@ -561,205 +563,223 @@ const IntegrationErrors: React.FC = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Integration Errors</h1>
-        <div className="flex gap-2">
-          <Button
-            color="primary"
-            variant="flat"
-            onPress={handleExportCSV}
-            isLoading={isExporting}
-            startContent={<Icon icon="mdi:download" />}
-          >
-            Export CSV
-          </Button>
-          {getSelectionCount() > 0 && (
-            <>
-              <Button
-                color="success"
-                variant="flat"
-                onPress={handleBulkResolve}
-                startContent={<Icon icon="mdi:check" />}
-              >
-                Resolve Selected ({getSelectionCount()})
-              </Button>
-              <Button
-                color="warning"
-                variant="flat"
-                onPress={handleBulkIgnore}
-                startContent={<Icon icon="mdi:eye-off" />}
-              >
-                Ignore Selected ({getSelectionCount()})
-              </Button>
-              <Button
-                color="danger"
-                variant="flat"
-                onPress={handleBulkDelete}
-                startContent={<Icon icon="mdi:delete" />}
-              >
-                Delete Selected ({getSelectionCount()})
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+      <PageHeader
+        title="Integration Errors"
+        subtitle="Monitor and manage errors from external integrations"
+        actions={
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="bordered"
+              onPress={handleExportCSV}
+              isLoading={isExporting}
+              startContent={
+                !isExporting ? (
+                  <Icon icon="lucide:download" width={14} height={14} />
+                ) : undefined
+              }
+            >
+              Export CSV
+            </Button>
+            {getSelectionCount() > 0 && (
+              <>
+                <Button
+                  size="sm"
+                  color="success"
+                  variant="flat"
+                  onPress={handleBulkResolve}
+                  startContent={
+                    <Icon icon="lucide:check" width={14} height={14} />
+                  }
+                >
+                  Resolve ({getSelectionCount()})
+                </Button>
+                <Button
+                  size="sm"
+                  color="warning"
+                  variant="flat"
+                  onPress={handleBulkIgnore}
+                  startContent={
+                    <Icon icon="lucide:eye-off" width={14} height={14} />
+                  }
+                >
+                  Ignore ({getSelectionCount()})
+                </Button>
+                <Button
+                  size="sm"
+                  color="danger"
+                  variant="flat"
+                  onPress={handleBulkDelete}
+                  startContent={
+                    <Icon icon="lucide:trash-2" width={14} height={14} />
+                  }
+                >
+                  Delete ({getSelectionCount()})
+                </Button>
+              </>
+            )}
+          </div>
+        }
+      />
 
-      {/* Summary Cards */}
+      {/* Summary stat cards */}
       {summary && (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
-            <CardBody>
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Total Errors</p>
-                <p className="text-2xl font-bold">{summary.total_errors}</p>
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Resolved</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {summary.resolved_errors}
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Unresolved</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {summary.unresolved_errors}
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Ignored</p>
-                <p className="text-2xl font-bold text-yellow-600">
-                  {summary.ignored_errors}
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-          <Card>
-            <CardBody>
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Integrations</p>
-                <p className="text-2xl font-bold">
-                  {Object.keys(summary.errors_by_integration).length}
-                </p>
-              </div>
-            </CardBody>
-          </Card>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatCard
+            label="Total Errors"
+            value={summary.total_errors}
+            icon="lucide:zap"
+            color="blue"
+          />
+          <StatCard
+            label="Unresolved"
+            value={summary.unresolved_errors}
+            icon="lucide:alert-circle"
+            color="red"
+          />
+          <StatCard
+            label="Resolved"
+            value={summary.resolved_errors}
+            icon="lucide:check-circle"
+            color="green"
+          />
+          <StatCard
+            label="Ignored"
+            value={summary.ignored_errors}
+            icon="lucide:eye-off"
+            color="amber"
+          />
+          <StatCard
+            label="Integrations"
+            value={Object.keys(summary.errors_by_integration).length}
+            icon="lucide:plug"
+            color="purple"
+          />
         </div>
       )}
 
       {/* Filters */}
-      <Card>
-        <CardHeader>
-          <h3 className="text-lg font-semibold">Filters</h3>
-        </CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Integration
+      <div
+        className="rounded-xl p-4"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.04)",
+        }}
+      >
+        <p
+          className="text-xs font-semibold uppercase tracking-wider mb-3"
+          style={{ color: "var(--muted-foreground)" }}
+        >
+          Filters
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {[
+            {
+              label: "Integration",
+              value: filters.integration_name,
+              onChange: (v: string) =>
+                handleFilterChange("integration_name", v),
+              options: filterOptions.integrations.map((i) => ({
+                value: i,
+                label: i,
+              })),
+              placeholder: "All integrations",
+            },
+            {
+              label: "Operation",
+              value: filters.operation_type,
+              onChange: (v: string) => handleFilterChange("operation_type", v),
+              options: filterOptions.operations.map((o) => ({
+                value: o,
+                label: o,
+              })),
+              placeholder: "All operations",
+            },
+            {
+              label: "Entity type",
+              value: filters.entity_type,
+              onChange: (v: string) => handleFilterChange("entity_type", v),
+              options: filterOptions.entityTypes.map((e) => ({
+                value: e,
+                label: e,
+              })),
+              placeholder: "All entity types",
+            },
+          ].map(({ label, value, onChange, options, placeholder }) => (
+            <div key={label}>
+              <label
+                className="block text-xs font-medium mb-1.5"
+                style={{ color: "var(--muted-foreground)" }}
+              >
+                {label}
               </label>
               <select
-                className="w-full p-2 border border-gray-300 rounded-md"
-                value={filters.integration_name}
-                onChange={(e) =>
-                  handleFilterChange("integration_name", e.target.value)
-                }
-              >
-                <option value="">All Integrations</option>
-                {filterOptions.integrations.map((integration) => (
-                  <option key={integration} value={integration}>
-                    {integration}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Operation
-              </label>
-              <select
-                className="w-full p-2 border border-gray-300 rounded-md"
-                value={filters.operation_type}
-                onChange={(e) =>
-                  handleFilterChange("operation_type", e.target.value)
-                }
-              >
-                <option value="">All Operations</option>
-                {filterOptions.operations.map((operation) => (
-                  <option key={operation} value={operation}>
-                    {operation}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Entity Type
-              </label>
-              <select
-                className="w-full p-2 border border-gray-300 rounded-md"
-                value={filters.entity_type}
-                onChange={(e) =>
-                  handleFilterChange("entity_type", e.target.value)
-                }
-              >
-                <option value="">All Entity Types</option>
-                {filterOptions.entityTypes.map((entityType) => (
-                  <option key={entityType} value={entityType}>
-                    {entityType}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">Status</label>
-              <select
-                className="w-full p-2 border border-gray-300 rounded-md"
-                value={
-                  filters.is_resolved === null && filters.is_ignored === null
-                    ? ""
-                    : filters.is_resolved === true
-                      ? "resolved"
-                      : filters.is_ignored === true
-                        ? "ignored"
-                        : "unresolved"
-                }
-                onChange={(e) => {
-                  if (e.target.value === "") {
-                    handleFilterChange("is_resolved", null);
-                    handleFilterChange("is_ignored", null);
-                  } else if (e.target.value === "resolved") {
-                    handleFilterChange("is_resolved", true);
-                    handleFilterChange("is_ignored", false);
-                  } else if (e.target.value === "ignored") {
-                    handleFilterChange("is_resolved", false);
-                    handleFilterChange("is_ignored", true);
-                  } else {
-                    handleFilterChange("is_resolved", false);
-                    handleFilterChange("is_ignored", false);
-                  }
+                className="w-full px-3 py-2 text-sm rounded-lg outline-none transition-colors"
+                style={{
+                  backgroundColor: "var(--background)",
+                  border: "1px solid var(--border)",
+                  color: "var(--foreground)",
                 }}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
               >
-                <option value="">All Statuses</option>
-                <option value="unresolved">Unresolved</option>
-                <option value="resolved">Resolved</option>
-                <option value="ignored">Ignored</option>
+                <option value="">{placeholder}</option>
+                {options.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
               </select>
             </div>
+          ))}
+          <div>
+            <label
+              className="block text-xs font-medium mb-1.5"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              Status
+            </label>
+            <select
+              className="w-full px-3 py-2 text-sm rounded-lg outline-none transition-colors"
+              style={{
+                backgroundColor: "var(--background)",
+                border: "1px solid var(--border)",
+                color: "var(--foreground)",
+              }}
+              value={
+                filters.is_resolved === null && filters.is_ignored === null
+                  ? ""
+                  : filters.is_resolved === true
+                    ? "resolved"
+                    : filters.is_ignored === true
+                      ? "ignored"
+                      : "unresolved"
+              }
+              onChange={(e) => {
+                if (e.target.value === "") {
+                  handleFilterChange("is_resolved", null);
+                  handleFilterChange("is_ignored", null);
+                } else if (e.target.value === "resolved") {
+                  handleFilterChange("is_resolved", true);
+                  handleFilterChange("is_ignored", false);
+                } else if (e.target.value === "ignored") {
+                  handleFilterChange("is_resolved", false);
+                  handleFilterChange("is_ignored", true);
+                } else {
+                  handleFilterChange("is_resolved", false);
+                  handleFilterChange("is_ignored", false);
+                }
+              }}
+            >
+              <option value="">All statuses</option>
+              <option value="unresolved">Unresolved</option>
+              <option value="resolved">Resolved</option>
+              <option value="ignored">Ignored</option>
+            </select>
           </div>
-        </CardBody>
-      </Card>
+        </div>
+      </div>
 
       {/* Errors Table */}
       <Card>

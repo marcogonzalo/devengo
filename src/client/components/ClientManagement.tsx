@@ -47,7 +47,8 @@ const ClientManagement: React.FC = () => {
   const [selectedClientForEmail, setSelectedClientForEmail] =
     React.useState<ClientWithMissingIds | null>(null);
   const [newEmail, setNewEmail] = React.useState("");
-  const [showEmailConfirmation, setShowEmailConfirmation] = React.useState(false);
+  const [showEmailConfirmation, setShowEmailConfirmation] =
+    React.useState(false);
   const [isUpdatingEmail, setIsUpdatingEmail] = React.useState(false);
   const {
     isOpen: isEmailModalOpen,
@@ -81,13 +82,16 @@ const ClientManagement: React.FC = () => {
       const missingIds = missingIdsResponse.data || [];
 
       // Create a map of missing external IDs by client ID
-      const missingIdsByClient = missingIds.reduce((acc, missing) => {
-        if (!acc[missing.id]) {
-          acc[missing.id] = [];
-        }
-        acc[missing.id].push(missing.system);
-        return acc;
-      }, {} as Record<number, string[]>);
+      const missingIdsByClient = missingIds.reduce(
+        (acc, missing) => {
+          if (!acc[missing.id]) {
+            acc[missing.id] = [];
+          }
+          acc[missing.id].push(missing.system);
+          return acc;
+        },
+        {} as Record<number, string[]>,
+      );
 
       // Combine client data with missing external IDs information
       const clientsWithMissingIds: ClientWithMissingIds[] = allClients.map(
@@ -107,7 +111,7 @@ const ClientManagement: React.FC = () => {
             missingExternalIds,
             externalIds,
           };
-        }
+        },
       );
 
       setClients(clientsWithMissingIds);
@@ -126,7 +130,7 @@ const ClientManagement: React.FC = () => {
   const filteredClients = clients.filter(
     (client) =>
       client.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.identifier?.toLowerCase().includes(searchTerm.toLowerCase())
+      client.identifier?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleEditClient = (client: ClientWithMissingIds) => {
@@ -199,12 +203,12 @@ const ClientManagement: React.FC = () => {
       setError("Email cannot be empty");
       return;
     }
-    
+
     if (newEmail === selectedClientForEmail?.identifier) {
       setError("New email is the same as current email");
       return;
     }
-    
+
     setShowEmailConfirmation(true);
   };
 
@@ -216,7 +220,10 @@ const ClientManagement: React.FC = () => {
 
     try {
       const updateData = { identifier: newEmail.trim() };
-      const response = await clientApi.updateClient(selectedClientForEmail.id, updateData);
+      const response = await clientApi.updateClient(
+        selectedClientForEmail.id,
+        updateData,
+      );
 
       if (response.error) {
         throw new Error(response.error);
@@ -224,7 +231,7 @@ const ClientManagement: React.FC = () => {
 
       // Refresh the client list
       await fetchClients();
-      
+
       // Close modals and reset states
       onEmailModalClose();
       setSelectedClientForEmail(null);
@@ -254,176 +261,338 @@ const ClientManagement: React.FC = () => {
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <Spinner size="lg" label="Loading clients..." />
+        <Spinner size="lg" color="primary" />
       </div>
     );
   }
 
-  if (error) {
+  if (error && clients.length === 0) {
     return (
-      <Card className="border-danger">
-        <CardBody>
-          <div className="flex items-center gap-2 text-danger">
-            <Icon icon="lucide:alert-circle" />
-            <span>Error: {error}</span>
-          </div>
+      <div className="p-6">
+        <div
+          className="flex items-center gap-3 p-4 rounded-lg"
+          style={{
+            backgroundColor: "rgba(220,38,38,0.06)",
+            border: "1px solid rgba(220,38,38,0.2)",
+          }}
+        >
+          <Icon
+            icon="lucide:alert-circle"
+            width={18}
+            height={18}
+            style={{ color: "#dc2626" }}
+          />
+          <p className="text-sm" style={{ color: "#dc2626" }}>
+            Error: {error}
+          </p>
           <Button
-            color="primary"
-            variant="light"
-            className="mt-2"
+            size="sm"
+            variant="bordered"
             onPress={fetchClients}
+            className="ml-auto"
           >
             Retry
           </Button>
-        </CardBody>
-      </Card>
+        </div>
+      </div>
     );
   }
 
+  const needAttention = clients.filter(
+    (c) => c.missingExternalIds.length > 0,
+  ).length;
+  const complete = clients.filter(
+    (c) => c.missingExternalIds.length === 0,
+  ).length;
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Client Management</h1>
-          <p className="text-sm text-default-500 mt-1">
-            <Icon icon="lucide:arrow-up" className="inline text-xs mr-1" />
-            Clients with more missing external IDs are prioritized at the top by
-            the API
-          </p>
-          <p className="text-sm text-default-400 mt-1">
-            <Icon icon="lucide:filter" className="inline text-xs mr-1" />
-            Only showing clients with active contracts or missing contracts
+          <h1
+            className="text-xl font-semibold"
+            style={{ color: "var(--foreground)" }}
+          >
+            Client Management
+          </h1>
+          <p
+            className="text-sm mt-0.5"
+            style={{ color: "var(--muted-foreground)" }}
+          >
+            Manage client external IDs and contact information
           </p>
         </div>
         <Button
-          color="primary"
-          variant="light"
+          size="sm"
+          variant="bordered"
           onPress={fetchClients}
-          startContent={<Icon icon="lucide:refresh-cw" />}
+          startContent={
+            <Icon icon="lucide:refresh-cw" width={14} height={14} />
+          }
         >
           Refresh
         </Button>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
-        <Input
-          placeholder="Search clients by name or email..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          startContent={<Icon icon="lucide:search" />}
-          className="max-w-sm"
-        />
-
-        <div className="flex gap-4 text-sm">
-          <div className="flex items-center gap-2">
-            <Icon icon="lucide:alert-triangle" className="text-danger" />
-            <span className="text-default-600">
-              {clients.filter((c) => c.missingExternalIds.length > 0).length}{" "}
-              clients need attention
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Icon icon="lucide:check-circle" className="text-success" />
-            <span className="text-default-600">
-              {clients.filter((c) => c.missingExternalIds.length === 0).length}{" "}
-              clients complete
-            </span>
-          </div>
+      {/* Stats row */}
+      <div className="flex gap-4">
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 rounded-lg"
+          style={{
+            backgroundColor: "rgba(220,38,38,0.06)",
+            border: "1px solid rgba(220,38,38,0.15)",
+          }}
+        >
+          <Icon
+            icon="lucide:alert-triangle"
+            width={16}
+            height={16}
+            style={{ color: "#dc2626" }}
+          />
+          <span className="text-sm font-medium" style={{ color: "#dc2626" }}>
+            {needAttention} need attention
+          </span>
+        </div>
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 rounded-lg"
+          style={{
+            backgroundColor: "rgba(22,163,74,0.06)",
+            border: "1px solid rgba(22,163,74,0.15)",
+          }}
+        >
+          <Icon
+            icon="lucide:check-circle"
+            width={16}
+            height={16}
+            style={{ color: "#16a34a" }}
+          />
+          <span className="text-sm font-medium" style={{ color: "#16a34a" }}>
+            {complete} complete
+          </span>
         </div>
       </div>
 
-      <Table aria-label="Clients table" removeWrapper>
-        <TableHeader>
-          <TableColumn>NAME</TableColumn>
-          <TableColumn>EMAIL</TableColumn>
-          <TableColumn>HOLDED ID</TableColumn>
-          <TableColumn>4GEEKS ID</TableColumn>
-          <TableColumn>NOTION ID</TableColumn>
-          <TableColumn>ACTIONS</TableColumn>
-        </TableHeader>
-        <TableBody>
-          {filteredClients.map((client) => (
-            <TableRow key={client.id}>
-              <TableCell>
-                <div className="font-medium">{client.name || "No name"}</div>
-              </TableCell>
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-default-600">
-                    {client.identifier}
-                  </div>
-                  <Button
-                    isIconOnly
-                    color="secondary"
-                    variant="light"
-                    size="sm"
-                    onPress={() => handleEditEmail(client)}
-                    className="min-w-unit-6 w-6 h-6"
-                  >
-                    <Icon icon="lucide:edit" className="text-xs" />
-                  </Button>
-                </div>
-              </TableCell>
-              <TableCell>
-                {client.missingExternalIds.includes("holded") ? (
-                  <Chip color="danger" variant="flat" size="sm">
-                    Missing
-                  </Chip>
-                ) : (
-                  <Chip color="success" variant="flat" size="sm">
-                    Present
-                  </Chip>
-                )}
-              </TableCell>
-              <TableCell>
-                {client.missingExternalIds.includes("fourgeeks") ? (
-                  <Chip color="danger" variant="flat" size="sm">
-                    Missing
-                  </Chip>
-                ) : (
-                  <Chip color="success" variant="flat" size="sm">
-                    Present
-                  </Chip>
-                )}
-              </TableCell>
-              <TableCell>
-                {client.missingExternalIds.includes("notion") ? (
-                  <Chip color="danger" variant="flat" size="sm">
-                    Missing
-                  </Chip>
-                ) : (
-                  <Chip color="success" variant="flat" size="sm">
-                    Present
-                  </Chip>
-                )}
-              </TableCell>
-              <TableCell>
-                <Button
-                  color="primary"
-                  variant="light"
-                  size="sm"
-                  onPress={() => handleEditClient(client)}
-                  startContent={<Icon icon="lucide:edit" />}
-                >
-                  Edit
-                </Button>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      {/* Search + table container */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.04)",
+        }}
+      >
+        {/* Search bar */}
+        <div
+          className="px-4 py-3"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <Input
+            placeholder="Search by name or email..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            startContent={
+              <Icon
+                icon="lucide:search"
+                width={16}
+                height={16}
+                style={{ color: "var(--muted-foreground)" }}
+              />
+            }
+            variant="bordered"
+            size="sm"
+            className="max-w-sm"
+          />
+        </div>
 
-      {filteredClients.length === 0 && !isLoading && (
-        <Card>
-          <CardBody className="text-center py-8">
+        <Table aria-label="Clients table" removeWrapper>
+          <TableHeader>
+            <TableColumn
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--card)",
+              }}
+            >
+              Name
+            </TableColumn>
+            <TableColumn
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--card)",
+              }}
+            >
+              Email
+            </TableColumn>
+            <TableColumn
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--card)",
+              }}
+            >
+              Holded ID
+            </TableColumn>
+            <TableColumn
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--card)",
+              }}
+            >
+              4Geeks ID
+            </TableColumn>
+            <TableColumn
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--card)",
+              }}
+            >
+              Notion ID
+            </TableColumn>
+            <TableColumn
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{
+                color: "var(--muted-foreground)",
+                backgroundColor: "var(--card)",
+              }}
+            >
+              Actions
+            </TableColumn>
+          </TableHeader>
+          <TableBody>
+            {filteredClients.map((client) => (
+              <TableRow key={client.id}>
+                <TableCell>
+                  <span
+                    className="text-sm font-medium"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    {client.name || "—"}
+                  </span>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-1.5">
+                    <span
+                      className="text-sm"
+                      style={{ color: "var(--muted-foreground)" }}
+                    >
+                      {client.identifier}
+                    </span>
+                    <Button
+                      isIconOnly
+                      variant="light"
+                      size="sm"
+                      onPress={() => handleEditEmail(client)}
+                      className="w-6 h-6 min-w-0"
+                    >
+                      <Icon icon="lucide:pencil" width={12} height={12} />
+                    </Button>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  {client.missingExternalIds.includes("holded") ? (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: "rgba(220,38,38,0.08)",
+                        color: "#dc2626",
+                      }}
+                    >
+                      Missing
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: "rgba(22,163,74,0.08)",
+                        color: "#16a34a",
+                      }}
+                    >
+                      Present
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {client.missingExternalIds.includes("fourgeeks") ? (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: "rgba(220,38,38,0.08)",
+                        color: "#dc2626",
+                      }}
+                    >
+                      Missing
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: "rgba(22,163,74,0.08)",
+                        color: "#16a34a",
+                      }}
+                    >
+                      Present
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {client.missingExternalIds.includes("notion") ? (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: "rgba(220,38,38,0.08)",
+                        color: "#dc2626",
+                      }}
+                    >
+                      Missing
+                    </span>
+                  ) : (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{
+                        backgroundColor: "rgba(22,163,74,0.08)",
+                        color: "#16a34a",
+                      }}
+                    >
+                      Present
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <Button
+                    size="sm"
+                    variant="light"
+                    color="primary"
+                    onPress={() => handleEditClient(client)}
+                    startContent={
+                      <Icon icon="lucide:pencil" width={13} height={13} />
+                    }
+                  >
+                    Edit
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        {filteredClients.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center py-16 gap-2">
             <Icon
               icon="lucide:users"
-              className="text-default-400 text-4xl mb-2"
+              width={32}
+              height={32}
+              style={{ color: "var(--muted-foreground)", opacity: 0.4 }}
             />
-            <p className="text-default-500">No clients found</p>
-          </CardBody>
-        </Card>
-      )}
+            <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
+              No clients found
+            </p>
+          </div>
+        )}
+      </div>
 
       <Modal isOpen={isOpen} onClose={onClose} size="lg">
         <ModalContent>
@@ -498,7 +667,11 @@ const ClientManagement: React.FC = () => {
       </Modal>
 
       {/* Email Editing Modal */}
-      <Modal isOpen={isEmailModalOpen} onClose={handleCloseEmailModal} size="md">
+      <Modal
+        isOpen={isEmailModalOpen}
+        onClose={handleCloseEmailModal}
+        size="md"
+      >
         <ModalContent>
           {(onClose) => (
             <>
@@ -511,9 +684,10 @@ const ClientManagement: React.FC = () => {
               <ModalBody>
                 <div className="space-y-4">
                   <div className="text-sm text-default-600">
-                    <span className="font-medium">Current Email:</span> {selectedClientForEmail?.identifier}
+                    <span className="font-medium">Current Email:</span>{" "}
+                    {selectedClientForEmail?.identifier}
                   </div>
-                  
+
                   <Input
                     type="email"
                     label="New Email"
@@ -523,20 +697,25 @@ const ClientManagement: React.FC = () => {
                     startContent={<Icon icon="lucide:mail" />}
                     isDisabled={isUpdatingEmail}
                   />
-                  
+
                   {error && (
                     <div className="flex items-center gap-2 text-danger text-sm">
                       <Icon icon="lucide:alert-circle" />
                       <span>{error}</span>
                     </div>
                   )}
-                  
+
                   {showEmailConfirmation && (
                     <div className="p-4 bg-warning-50 border border-warning-200 rounded-lg">
                       <div className="flex items-start gap-3">
-                        <Icon icon="lucide:alert-triangle" className="text-warning-600 mt-0.5" />
+                        <Icon
+                          icon="lucide:alert-triangle"
+                          className="text-warning-600 mt-0.5"
+                        />
                         <div>
-                          <h4 className="font-medium text-warning-800">Confirm Email Change</h4>
+                          <h4 className="font-medium text-warning-800">
+                            Confirm Email Change
+                          </h4>
                           <p className="text-sm text-warning-700 mt-1">
                             Are you sure you want to change the email from{" "}
                             <span className="font-mono bg-warning-100 px-1 rounded">
@@ -545,10 +724,12 @@ const ClientManagement: React.FC = () => {
                             to{" "}
                             <span className="font-mono bg-warning-100 px-1 rounded">
                               {newEmail}
-                            </span>?
+                            </span>
+                            ?
                           </p>
                           <p className="text-xs text-warning-600 mt-2">
-                            This action cannot be undone easily and may affect client communications.
+                            This action cannot be undone easily and may affect
+                            client communications.
                           </p>
                         </div>
                       </div>
@@ -559,9 +740,9 @@ const ClientManagement: React.FC = () => {
               <ModalFooter>
                 {showEmailConfirmation ? (
                   <>
-                    <Button 
-                      color="default" 
-                      variant="light" 
+                    <Button
+                      color="default"
+                      variant="light"
                       onPress={handleCancelEmailChange}
                       isDisabled={isUpdatingEmail}
                     >
@@ -577,9 +758,9 @@ const ClientManagement: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <Button 
-                      color="danger" 
-                      variant="light" 
+                    <Button
+                      color="danger"
+                      variant="light"
                       onPress={handleCloseEmailModal}
                       isDisabled={isUpdatingEmail}
                     >

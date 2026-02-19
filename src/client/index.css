@@ -9,9 +9,88 @@
 @source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
 :root {
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
+
+  /* 4Geeks design system - light mode */
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 84% 4.9%);
+  --primary: hsl(207.4 92.7% 42.7%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(188.8 94.5% 42.7%);
+  --secondary-foreground: hsl(0 0% 100%);
+  --muted: hsl(210 40% 96%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --accent: hsl(210 40% 96%);
+  --accent-foreground: hsl(222.2 84% 4.9%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(214.3 31.8% 73%);
+  --input: hsl(214.3 31.8% 73%);
+  --ring: hsl(207.4 92.7% 42.7%);
+  --radius: 0.5rem;
+
+  /* Content area */
+  --content-bg: #f8fafc;
+
+  /* Sidebar */
+  --sidebar-width: 56px;
+  --sidebar-width-expanded: 220px;
+  --sidebar-background: hsl(0 0% 100%);
+  --sidebar-foreground: hsl(215.4 16.3% 46.9%);
+  --sidebar-primary: hsl(207.4 92.7% 42.7%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(210 40% 96%);
+  --sidebar-accent-foreground: hsl(222.2 84% 4.9%);
+  --sidebar-border: hsl(214.3 31.8% 73%);
+  --sidebar-ring: hsl(207.4 92.7% 42.7%);
+}
+
+.dark {
+  --background: hsl(222.2 84% 4.9%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222.2 84% 4.9%);
+  --card-foreground: hsl(210 40% 98%);
+  --popover: hsl(222.2 84% 4.9%);
+  --popover-foreground: hsl(210 40% 98%);
+  --primary: hsl(207.4 92.7% 42.7%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(217.2 32.6% 17.5%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --muted: hsl(217.2 32.6% 17.5%);
+  --muted-foreground: hsl(215 20.2% 65.1%);
+  --accent: hsl(217.2 32.6% 17.5%);
+  --accent-foreground: hsl(210 40% 98%);
+  --destructive: hsl(0 62.8% 30.6%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --border: hsl(217.2 32.6% 17.5%);
+  --input: hsl(217.2 32.6% 17.5%);
+  --ring: hsl(207.4 92.7% 42.7%);
+
+  --sidebar-background: hsl(222.2 84% 4.9%);
+  --sidebar-foreground: hsl(215 20.2% 65.1%);
+  --sidebar-border: hsl(217.2 32.6% 17.5%);
+  --content-bg: #0f172a;
 }
 
 body {
-  @apply bg-background text-foreground;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sidebar nav item active state - matches 4Geeks .nav-item.active */
+.nav-item.active {
+  background-color: hsl(207.4 92.7% 95%);
+  color: hsl(207.4 92.7% 30%);
+}
+
+.dark .nav-item.active {
+  background-color: hsl(207.4 92.7% 15%);
+  color: hsl(207.4 92.7% 70%);
 }

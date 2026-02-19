@@ -14,6 +14,7 @@ import {
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { syncAPI, ApiResponse, SyncStatusResponse } from "../utils/api";
+import PageHeader from "./ui/PageHeader";
 
 interface SyncStep {
   id: string;
@@ -176,196 +177,197 @@ const SyncManagement: React.FC = () => {
   }, []);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Sync Management</h1>
-        <Button
-          color="secondary"
-          variant="flat"
-          onPress={loadAvailableSteps}
-          startContent={<Icon icon="lucide:refresh-cw" />}
-        >
-          Refresh Steps
-        </Button>
-      </div>
+    <div className="p-6 max-w-5xl mx-auto space-y-6">
+      <PageHeader
+        title="Sync Management"
+        subtitle="Configure and run import and accrual sync processes"
+        actions={
+          <Button
+            size="sm"
+            variant="bordered"
+            onPress={loadAvailableSteps}
+            startContent={
+              <Icon icon="lucide:refresh-cw" width={14} height={14} />
+            }
+          >
+            Refresh Steps
+          </Button>
+        }
+      />
 
       {/* Date Configuration */}
-      <Card>
-        <CardHeader>
-          <h2 className="text-xl font-semibold">Date Configuration</h2>
-        </CardHeader>
-        <CardBody className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-2">Year</label>
-              <Input
-                type="number"
-                value={year.toString()}
-                onChange={(e) =>
-                  setYear(parseInt(e.target.value) || new Date().getFullYear())
-                }
-                placeholder="Enter year"
-                className="max-w-xs"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-2">
-                Month (Optional)
-              </label>
-              <Select
-                placeholder="Select a specific month (leave empty for all months)"
-                selectedKeys={selectedMonth ? [selectedMonth.toString()] : []}
-                onSelectionChange={(keys) => {
-                  const selected = Array.from(keys)[0] as string;
-                  setSelectedMonth(selected ? parseInt(selected) : null);
-                }}
-                className="max-w-xs"
-              >
-                {getMonthOptions().map((option) => (
-                  <SelectItem key={option.key}>{option.label}</SelectItem>
-                ))}
-              </Select>
-            </div>
+      <div
+        className="rounded-xl p-5"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.04)",
+        }}
+      >
+        <p
+          className="text-sm font-semibold mb-4"
+          style={{ color: "var(--foreground)" }}
+        >
+          Date Configuration
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label
+              className="block text-xs font-medium mb-1.5"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              Year
+            </label>
+            <Input
+              type="number"
+              value={year.toString()}
+              onChange={(e) =>
+                setYear(parseInt(e.target.value) || new Date().getFullYear())
+              }
+              placeholder="Enter year"
+              size="sm"
+              variant="bordered"
+              className="max-w-xs"
+            />
           </div>
-        </CardBody>
-      </Card>
+          <div>
+            <label
+              className="block text-xs font-medium mb-1.5"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              Month (optional)
+            </label>
+            <Select
+              placeholder="All months"
+              selectedKeys={selectedMonth ? [selectedMonth.toString()] : []}
+              onSelectionChange={(keys) => {
+                const selected = Array.from(keys)[0] as string;
+                setSelectedMonth(selected ? parseInt(selected) : null);
+              }}
+              size="sm"
+              variant="bordered"
+              className="max-w-xs"
+            >
+              {getMonthOptions().map((option) => (
+                <SelectItem key={option.key}>{option.label}</SelectItem>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </div>
 
       {/* Import Steps */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between w-full">
-            <div className="flex items-center space-x-3">
-              <h3 className="text-lg font-medium">Import Steps</h3>
-              <span className="text-sm text-gray-500">
-                (Starting from:{" "}
-                {availableSteps.import_steps.find(
-                  (step) => step.id === importStartingPoint,
-                )?.name || "Sync Invoices"}
-                )
-              </span>
-            </div>
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.04)",
+        }}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <div>
+            <p
+              className="text-sm font-semibold"
+              style={{ color: "var(--foreground)" }}
+            >
+              Import Steps
+            </p>
+            <p
+              className="text-xs mt-0.5"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              Starting from:{" "}
+              {availableSteps.import_steps.find(
+                (s) => s.id === importStartingPoint,
+              )?.name || "Sync Invoices"}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
-              variant="flat"
-              color="secondary"
+              variant="bordered"
               onPress={() => setShowImportSteps(!showImportSteps)}
-              startContent={
+              endContent={
                 <Icon
                   icon={
                     showImportSteps
                       ? "lucide:chevron-up"
                       : "lucide:chevron-down"
                   }
+                  width={14}
+                  height={14}
                 />
               }
             >
-              {showImportSteps ? "Hide" : "Show"} Steps
+              {showImportSteps ? "Hide" : "Show"} steps
             </Button>
-          </div>
-        </CardHeader>
-        {showImportSteps && (
-          <CardBody>
-            <div className="space-y-4">
-              <div className="text-sm text-gray-600 mb-4">
-                Select the starting point for the import process. All steps from
-                the selected point onwards will be executed in order.
-              </div>
-              <RadioGroup
-                value={importStartingPoint}
-                onValueChange={setImportStartingPoint}
-                className="space-y-3"
-              >
-                {availableSteps.import_steps.map((step) => (
-                  <div
-                    key={step.id}
-                    className="flex items-start space-x-3 p-3 border rounded-lg"
-                  >
-                    <Radio value={step.id} />
-                    <div className="flex-1">
-                      <div className="font-medium">{step.name}</div>
-                      <div className="text-sm text-gray-600">
-                        {step.description}
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="flat"
-                      color="primary"
-                      onPress={() => executeSingleStep(step.id, "import")}
-                      isDisabled={isLoading}
-                      startContent={
-                        isLoading ? (
-                          <Spinner size="sm" />
-                        ) : (
-                          <Icon icon="lucide:play" />
-                        )
-                      }
-                    >
-                      Run
-                    </Button>
-                  </div>
-                ))}
-              </RadioGroup>
-            </div>
-          </CardBody>
-        )}
-
-        {/* Execute Import Process Button - Always visible */}
-        <CardBody className="pt-0">
-          <div className="flex justify-end">
             <Button
+              size="sm"
               color="primary"
-              size="lg"
               onPress={() => executeProcess("import")}
               isDisabled={isLoading}
               startContent={
-                isLoading ? <Spinner size="sm" /> : <Icon icon="lucide:play" />
+                isLoading ? (
+                  <Spinner size="sm" />
+                ) : (
+                  <Icon icon="lucide:play" width={14} height={14} />
+                )
               }
             >
-              Execute Import Process
+              Run Import
             </Button>
           </div>
-        </CardBody>
-      </Card>
-
-      {/* Accrual Steps */}
-      <Card>
-        <CardHeader>
-          <h3 className="text-lg font-medium">Accrual Steps</h3>
-        </CardHeader>
-        <CardBody>
-          <div className="space-y-4">
-            <div className="text-sm text-gray-600 mb-4">
-              Select the accrual process to execute.
-            </div>
-            <RadioGroup
-              value={accrualStartingPoint}
-              onValueChange={setAccrualStartingPoint}
-              className="space-y-3"
+        </div>
+        {showImportSteps && (
+          <div className="p-5 space-y-2">
+            <p
+              className="text-xs mb-3"
+              style={{ color: "var(--muted-foreground)" }}
             >
-              {availableSteps.accrual_steps.map((step) => (
+              Select the starting point. All steps from the selected point
+              onwards will run in order.
+            </p>
+            <RadioGroup
+              value={importStartingPoint}
+              onValueChange={setImportStartingPoint}
+              className="space-y-2"
+            >
+              {availableSteps.import_steps.map((step) => (
                 <div
                   key={step.id}
-                  className="flex items-start space-x-3 p-3 border rounded-lg"
+                  className="flex items-center gap-3 p-3 rounded-lg transition-colors"
+                  style={{ border: "1px solid var(--border)" }}
                 >
                   <Radio value={step.id} />
-                  <div className="flex-1">
-                    <div className="font-medium">{step.name}</div>
-                    <div className="text-sm text-gray-600">
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className="text-sm font-medium"
+                      style={{ color: "var(--foreground)" }}
+                    >
+                      {step.name}
+                    </p>
+                    <p
+                      className="text-xs mt-0.5"
+                      style={{ color: "var(--muted-foreground)" }}
+                    >
                       {step.description}
-                    </div>
+                    </p>
                   </div>
                   <Button
                     size="sm"
                     variant="flat"
                     color="primary"
-                    onPress={() => executeSingleStep(step.id, "accrual")}
+                    onPress={() => executeSingleStep(step.id, "import")}
                     isDisabled={isLoading}
                     startContent={
                       isLoading ? (
                         <Spinner size="sm" />
                       ) : (
-                        <Icon icon="lucide:play" />
+                        <Icon icon="lucide:play" width={13} height={13} />
                       )
                     }
                   >
@@ -375,90 +377,213 @@ const SyncManagement: React.FC = () => {
               ))}
             </RadioGroup>
           </div>
+        )}
+      </div>
 
-          <div className="flex justify-end mt-4">
-            <Button
-              color="primary"
-              size="lg"
-              onPress={() => executeProcess("accrual")}
-              isDisabled={isLoading}
-              startContent={
-                isLoading ? <Spinner size="sm" /> : <Icon icon="lucide:play" />
-              }
+      {/* Accrual Steps */}
+      <div
+        className="rounded-xl overflow-hidden"
+        style={{
+          backgroundColor: "var(--card)",
+          border: "1px solid var(--border)",
+          boxShadow: "0 1px 3px 0 rgba(0,0,0,0.04)",
+        }}
+      >
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--border)" }}
+        >
+          <div>
+            <p
+              className="text-sm font-semibold"
+              style={{ color: "var(--foreground)" }}
             >
-              Execute Accrual Process
-            </Button>
+              Accrual Steps
+            </p>
+            <p
+              className="text-xs mt-0.5"
+              style={{ color: "var(--muted-foreground)" }}
+            >
+              Select the accrual process to execute
+            </p>
           </div>
-        </CardBody>
-      </Card>
+          <Button
+            size="sm"
+            color="primary"
+            onPress={() => executeProcess("accrual")}
+            isDisabled={isLoading}
+            startContent={
+              isLoading ? (
+                <Spinner size="sm" />
+              ) : (
+                <Icon icon="lucide:play" width={14} height={14} />
+              )
+            }
+          >
+            Run Accruals
+          </Button>
+        </div>
+        <div className="p-5 space-y-2">
+          <RadioGroup
+            value={accrualStartingPoint}
+            onValueChange={setAccrualStartingPoint}
+            className="space-y-2"
+          >
+            {availableSteps.accrual_steps.map((step) => (
+              <div
+                key={step.id}
+                className="flex items-center gap-3 p-3 rounded-lg"
+                style={{ border: "1px solid var(--border)" }}
+              >
+                <Radio value={step.id} />
+                <div className="flex-1 min-w-0">
+                  <p
+                    className="text-sm font-medium"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    {step.name}
+                  </p>
+                  <p
+                    className="text-xs mt-0.5"
+                    style={{ color: "var(--muted-foreground)" }}
+                  >
+                    {step.description}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="flat"
+                  color="primary"
+                  onPress={() => executeSingleStep(step.id, "accrual")}
+                  isDisabled={isLoading}
+                  startContent={
+                    isLoading ? (
+                      <Spinner size="sm" />
+                    ) : (
+                      <Icon icon="lucide:play" width={13} height={13} />
+                    )
+                  }
+                >
+                  Run
+                </Button>
+              </div>
+            ))}
+          </RadioGroup>
+        </div>
+      </div>
 
       {/* Results */}
       {results && (
-        <Card>
-          <CardHeader>
-            <h3 className="text-lg font-medium">Execution Results</h3>
-          </CardHeader>
-          <CardBody>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
-                    {results.total_stats?.total_processed || 0}
-                  </div>
-                  <div className="text-sm text-blue-800">Processed</div>
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{
+            backgroundColor: "var(--card)",
+            border: "1px solid var(--border)",
+            boxShadow: "0 1px 3px 0 rgba(0,0,0,0.04)",
+          }}
+        >
+          <div
+            className="px-5 py-4"
+            style={{ borderBottom: "1px solid var(--border)" }}
+          >
+            <p
+              className="text-sm font-semibold"
+              style={{ color: "var(--foreground)" }}
+            >
+              Execution Results
+            </p>
+          </div>
+          <div className="p-5 space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {[
+                {
+                  label: "Processed",
+                  value: results.total_stats?.total_processed || 0,
+                  color: "#1976d2",
+                  bg: "rgba(25,118,210,0.06)",
+                },
+                {
+                  label: "Created",
+                  value: results.total_stats?.total_created || 0,
+                  color: "#16a34a",
+                  bg: "rgba(22,163,74,0.06)",
+                },
+                {
+                  label: "Updated",
+                  value: results.total_stats?.total_updated || 0,
+                  color: "#d97706",
+                  bg: "rgba(217,119,6,0.06)",
+                },
+                {
+                  label: "Errors",
+                  value: results.total_stats?.total_errors || 0,
+                  color: "#dc2626",
+                  bg: "rgba(220,38,38,0.06)",
+                },
+              ].map(({ label, value, color, bg }) => (
+                <div
+                  key={label}
+                  className="p-3 rounded-lg text-center"
+                  style={{ backgroundColor: bg }}
+                >
+                  <p className="text-2xl font-bold" style={{ color }}>
+                    {value}
+                  </p>
+                  <p className="text-xs font-medium mt-0.5" style={{ color }}>
+                    {label}
+                  </p>
                 </div>
-                <div className="text-center p-3 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {results.total_stats?.total_created || 0}
-                  </div>
-                  <div className="text-sm text-green-800">Created</div>
-                </div>
-                <div className="text-center p-3 bg-yellow-50 rounded-lg">
-                  <div className="text-2xl font-bold text-yellow-600">
-                    {results.total_stats?.total_updated || 0}
-                  </div>
-                  <div className="text-sm text-yellow-800">Updated</div>
-                </div>
-                <div className="text-center p-3 bg-red-50 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">
-                    {results.total_stats?.total_errors || 0}
-                  </div>
-                  <div className="text-sm text-red-800">Errors</div>
+              ))}
+            </div>
+
+            {results.step_results && results.step_results.length > 0 && (
+              <div>
+                <p
+                  className="text-xs font-semibold uppercase tracking-wider mb-2"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  Step details
+                </p>
+                <div className="space-y-2">
+                  {results.step_results.map((stepResult, index) => (
+                    <div
+                      key={index}
+                      className="p-3 rounded-lg"
+                      style={{ border: "1px solid var(--border)" }}
+                    >
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: "var(--foreground)" }}
+                      >
+                        {stepResult.step}
+                      </p>
+                      <p
+                        className="text-xs mt-1"
+                        style={{ color: "var(--muted-foreground)" }}
+                      >
+                        {stepResult.step === "invoices" &&
+                          stepResult.stats?.total_received != null &&
+                          `Received: ${stepResult.stats.total_received} · `}
+                        Processed: {stepResult.stats?.total_processed || 0} ·
+                        Created: {stepResult.stats?.total_created || 0} ·
+                        Updated: {stepResult.stats?.total_updated || 0} ·
+                        Errors: {stepResult.stats?.total_errors || 0}
+                      </p>
+                      {stepResult.stats?.error && (
+                        <p
+                          className="text-xs mt-1"
+                          style={{ color: "#dc2626" }}
+                        >
+                          Error: {stepResult.stats.error}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </div>
-
-              {results.step_results && results.step_results.length > 0 && (
-                <div>
-                  <h4 className="font-medium mb-2">Step Details</h4>
-                  <div className="space-y-2">
-                    {results.step_results.map((stepResult, index) => (
-                      <div key={index} className="p-3 border rounded-lg">
-                        <div className="font-medium">{stepResult.step}</div>
-                        <div className="text-sm text-gray-600">
-                          {stepResult.step === "invoices" &&
-                          stepResult.stats?.total_received != null ? (
-                            <>
-                              Received: {stepResult.stats.total_received} |
-                            </>
-                          ) : null}
-                          Processed: {stepResult.stats?.total_processed || 0} |
-                          Created: {stepResult.stats?.total_created || 0} |
-                          Updated: {stepResult.stats?.total_updated || 0} |
-                          Errors: {stepResult.stats?.total_errors || 0}
-                        </div>
-                        {stepResult.stats?.error && (
-                          <div className="text-sm text-red-600 mt-1">
-                            Error: {stepResult.stats.error}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardBody>
-        </Card>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
