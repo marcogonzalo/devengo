@@ -47,8 +47,8 @@ The algorithm uses a sophisticated query to include contracts that meet ANY of t
 
 ```sql
 ContractAccrual.id IN (
-    SELECT DISTINCT contract_accrual_id 
-    FROM AccruedPeriod 
+    SELECT DISTINCT contract_accrual_id
+    FROM AccruedPeriod
     WHERE accrual_date BETWEEN start_date AND end_date
 )
 ```
@@ -89,7 +89,7 @@ The algorithm handles a critical edge case where final accruals have `service_pe
 
 **Example:**
 
-```
+```text
 NULL accrual on 2024-03-15 → Find period that overlaps with March 2024
 If found: Move amount to that period's row
 If not found: Move to most recent period (e.g., ended in January 2024)
@@ -206,13 +206,13 @@ The report respects the same business logic as the accrual processor:
 
 ### File Structure
 
-```
+```txt
 accruals_YYYY-MM-DD_YYYY-MM-DD.csv
 ```
 
 ### Column Headers
 
-```
+```txt
 Contract start date,Client,Email,Contract Status,Service,Period,Period Status,Status Change Date,Total to accrue,Pending to accrue,Period start date,Period end date,January 2024,February 2024,March 2024,...
 ```
 

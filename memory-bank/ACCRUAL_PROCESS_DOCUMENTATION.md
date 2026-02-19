@@ -12,7 +12,7 @@ The accrual processing system handles ServiceContract processing based on status
 
 ## Architecture
 
-```
+```text
 ContractAccrualProcessor (Service Layer)
 ├── process_all_contracts() - Main orchestrator
 ├── _process_contract() - Route by contract status
@@ -33,7 +33,7 @@ Models:
 
 ### 1. Contract Filtering
 
-```
+```text
 All Contracts
 ├── ❌ Not started (contract_date > month_end)
 ├── ❌ Completed (CLOSED/CANCELED + COMPLETED accrual)
@@ -47,7 +47,7 @@ All Contracts
 
 ### 2. Contract Status Routing
 
-```
+```text
 ServiceContract Status
 ├── ACTIVE → _process_active_contract()
 ├── CANCELED → _process_canceled_contract()
@@ -60,7 +60,7 @@ ServiceContract Status
 
 #### 1.1 Completed Accruals
 
-```
+```text
 Condition: contract_accrual.accrual_status == COMPLETED
 Action: Update ServiceContract status
 ├── total_to_accrue > 0 → CLOSED
@@ -69,7 +69,7 @@ Action: Update ServiceContract status
 
 #### 1.2 Without Service Periods
 
-```
+```text
 Client in Notion?
 ├── YES → Check educational status
 │   ├── ENDED → Accrue fully + update status
@@ -81,7 +81,7 @@ Client in Notion?
 
 #### 1.3 With Service Periods
 
-```
+```text
 Overlapping Period Status:
 ├── ACTIVE → Accrue proportional amount
 ├── POSTPONED → Accrue until status_change_date + PAUSED
@@ -93,14 +93,14 @@ Overlapping Period Status:
 
 #### 2.1 Completed Accruals
 
-```
+```text
 Condition: contract_accrual.accrual_status == COMPLETED
 Action: Skip processing
 ```
 
 #### 2.2 Without Service Periods
 
-```
+```text
 Client in Notion?
 ├── YES → Validate educational status
 │   ├── ENDED/DROPPED → Accrue fully + CLOSED
@@ -111,7 +111,7 @@ Client in Notion?
 
 #### 2.3 With Service Periods
 
-```
+```text
 Period Status Check:
 ├── DROPPED/POSTPONED → Accrue fully + CANCELED
 └── ACTIVE/ENDED → Notify + skip
@@ -121,14 +121,14 @@ Period Status Check:
 
 #### 3.1 Completed Accruals
 
-```
+```text
 Condition: contract_accrual.accrual_status == COMPLETED
 Action: Skip processing
 ```
 
 #### 3.2 Without Service Periods
 
-```
+```text
 Client in Notion?
 ├── YES → Validate educational status
 │   ├── ENDED → Accrue fully + CLOSED
@@ -140,7 +140,7 @@ Client in Notion?
 
 #### 3.3 With Service Periods
 
-```
+```text
 Period Status Check:
 ├── ENDED → Accrue fully + CLOSED
 └── ACTIVE/POSTPONED/DROPPED → Notify + skip
@@ -150,7 +150,7 @@ Period Status Check:
 
 ### Zero-Amount Contracts
 
-```
+```text
 Condition: contract.contract_amount == 0
 Processing:
 ├── Recent (≤15 days) → Notify missing CRM
@@ -161,7 +161,7 @@ Processing:
 
 ### Negative Amount Contracts
 
-```
+```text
 Condition: contract_accrual.remaining_amount_to_accrue < 0
 Processing:
 ├── Dropped before accrual → Full negative accrual + CANCELED
@@ -170,7 +170,7 @@ Processing:
 
 ### Postponed Period Time Limits
 
-```
+```text
 Condition: Last postponed period > 3 months
 Processing:
 ├── Check if period exceeded POSTPONED_PERIOD_MAX_MONTHS
@@ -180,7 +180,7 @@ Processing:
 
 ### ISA Full-Time Contracts
 
-```
+```text
 Condition: service.name == "ES - ISA - Full-Time"
 Processing:
 ├── Check for new invoices in target month
@@ -192,14 +192,14 @@ Processing:
 
 ### Monthly Portion Calculation
 
-```
+```text
 portion = sessions_in_overlap / remaining_sessions
 accrued_amount = remaining_amount_to_accrue × portion
 ```
 
 ### Example
 
-```
+```text
 Contract: €10,000 total, 100 sessions
 Already accrued: €7,000 (70 sessions)
 Remaining: €3,000 (30 sessions)
