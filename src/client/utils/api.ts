@@ -509,6 +509,13 @@ export interface LatestProcessedMonthYear {
   month: number | null;
 }
 
+export interface InvoicesCountResponse {
+  year: number;
+  month: number | null;
+  count: number;
+  has_invoices: boolean;
+}
+
 export const syncAPI = {
   // Get available sync steps
   getAvailableSteps: async (): Promise<ApiResponse<AvailableSteps>> => {
@@ -547,6 +554,19 @@ export const syncAPI = {
   > => {
     return apiClient.get<LatestProcessedMonthYear>(
       "/sync/latest-processed-month-year",
+    );
+  },
+
+  getInvoicesCount: async (
+    year: number,
+    month?: number,
+  ): Promise<ApiResponse<InvoicesCountResponse>> => {
+    const params = new URLSearchParams({ year: year.toString() });
+    if (month) {
+      params.set("month", month.toString());
+    }
+    return apiClient.get<InvoicesCountResponse>(
+      `/sync/invoices-count?${params.toString()}`,
     );
   },
 };

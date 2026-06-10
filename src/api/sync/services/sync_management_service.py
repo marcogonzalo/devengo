@@ -83,7 +83,8 @@ class SyncManagementService:
                 # Extract step_stats from monthly_results if available, otherwise use total_stats
                 if "monthly_results" in result and result["monthly_results"]:
                     # Use the first month's stats as representative (includes total_received for invoices)
-                    step_stats = result["monthly_results"][0].get("stats", total_stats)
+                    step_stats = result["monthly_results"][0].get(
+                        "stats", total_stats)
                 else:
                     step_stats = total_stats
             else:
@@ -98,7 +99,7 @@ class SyncManagementService:
                     "total_errors": step_stats["total_errors"],
                     "total_received": step_stats.get("total_received", 0),
                 }
-            
+
             step_results = [{
                 "step": step,
                 "result": result,
@@ -398,7 +399,8 @@ class SyncManagementService:
                         total_stats["total_skipped"] += month_stats["total_skipped"]
                         total_stats["total_failed"] += month_stats["total_failed"]
                         total_stats["total_errors"] += month_stats["total_errors"]
-                        total_stats["total_received"] += month_stats.get("total_received", 0)
+                        total_stats["total_received"] += month_stats.get(
+                            "total_received", 0)
                         total_stats["months_processed"] += 1
                         total_stats["monthly_results"].append({
                             "month": datetime.fromtimestamp(start_timestamp).strftime('%Y-%m'),
@@ -452,14 +454,20 @@ class SyncManagementService:
                             "month": accrual_date,
                             "stats": month_stats
                         })
-                        
+
                         # Accumulate totals
-                        total_results["total_processed"] += month_stats.get("total_processed", 0)
-                        total_results["total_created"] += month_stats.get("total_created", 0)
-                        total_results["total_updated"] += month_stats.get("total_updated", 0)
-                        total_results["total_skipped"] += month_stats.get("total_skipped", 0)
-                        total_results["total_failed"] += month_stats.get("total_failed", 0)
-                        total_results["total_errors"] += month_stats.get("total_errors", 0)
+                        total_results["total_processed"] += month_stats.get(
+                            "total_processed", 0)
+                        total_results["total_created"] += month_stats.get(
+                            "total_created", 0)
+                        total_results["total_updated"] += month_stats.get(
+                            "total_updated", 0)
+                        total_results["total_skipped"] += month_stats.get(
+                            "total_skipped", 0)
+                        total_results["total_failed"] += month_stats.get(
+                            "total_failed", 0)
+                        total_results["total_errors"] += month_stats.get(
+                            "total_errors", 0)
 
                     return total_results
                 else:
@@ -525,7 +533,8 @@ class SyncManagementService:
             else:
                 # Single-month response: endpoint returns total_received, processed, created, updated, skipped, errors
                 processed = result.get("processed", 0)
-                total_received = result.get("total_received", 0) or (processed + result.get("skipped", 0) + result.get("errors", 0))
+                total_received = result.get("total_received", 0) or (
+                    processed + result.get("skipped", 0) + result.get("errors", 0))
                 stats = {
                     "step": step_name,
                     "total_processed": processed,
@@ -612,6 +621,18 @@ class SyncManagementService:
             stats["error"] = result["error"]
 
         return stats
+
+    def count_invoices_for_period(
+        self, year: int, month: Optional[int] = None
+    ) -> int:
+        """Count invoices for a year, optionally filtered by month."""
+        query = self.db.query(func.count(Invoice.id)).filter(
+            extract("year", Invoice.invoice_date) == year
+        )
+        if month is not None:
+            query = query.filter(
+                extract("month", Invoice.invoice_date) == month)
+        return query.scalar() or 0
 
     def get_latest_processed_month_year(self) -> Dict[str, Optional[int]]:
         """

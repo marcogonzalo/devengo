@@ -151,6 +151,26 @@ async def get_process_status(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/invoices-count")
+async def get_invoices_count(
+    year: int,
+    month: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """Return invoice count for the accrual period."""
+    try:
+        sync_service = SyncManagementService(db)
+        count = sync_service.count_invoices_for_period(year, month)
+        return {
+            "year": year,
+            "month": month,
+            "count": count,
+            "has_invoices": count > 0,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/latest-processed-month-year")
 async def get_latest_processed_month_year(
     db: Session = Depends(get_db)

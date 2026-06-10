@@ -11,6 +11,12 @@ import {
   RadioGroup,
   Spinner,
   Divider,
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+  useDisclosure,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { syncAPI, ApiResponse, SyncStatusResponse } from "../utils/api";
@@ -49,8 +55,18 @@ const SyncManagement: React.FC = () => {
     new Date().getMonth() === 0 ? 12 : new Date().getMonth(),
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [activeExecution, setActiveExecution] = useState<string | null>(null);
   const [results, setResults] = useState<SyncResult | null>(null);
   const [showImportSteps, setShowImportSteps] = useState<boolean>(false);
+  const [pendingAccrualAction, setPendingAccrualAction] = useState<
+    (() => void) | null
+  >(null);
+  const [noInvoicesPeriodLabel, setNoInvoicesPeriodLabel] = useState("");
+  const {
+    isOpen: isNoInvoicesModalOpen,
+    onOpen: onNoInvoicesModalOpen,
+    onClose: onNoInvoicesModalClose,
+  } = useDisclosure();
 
   // Load latest processed month and year from database
   useEffect(() => {
@@ -100,6 +116,31 @@ const SyncManagement: React.FC = () => {
     }
   };
 
+  const getMonthLabel = (month: number) => {
+    const monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    return monthNames[month - 1] ?? `Month ${month}`;
+  };
+
+  const getPeriodLabel = () => {
+    if (selectedMonth) {
+      return `${getMonthLabel(selectedMonth)} ${year}`;
+    }
+    return `all months in ${year}`;
+  };
+
   const getMonthOptions = () => {
     return [
       { key: "1", label: "January" },
@@ -119,6 +160,48 @@ const SyncManagement: React.FC = () => {
 
   // No need for step toggle function with starting point approach
 
+  const runAccrualWithInvoiceCheck = async (action: () => void) => {
+    if (!year) {
+      alert("Please specify a year");
+      return;
+    }
+
+    try {
+      const response = await syncAPI.getInvoicesCount(
+        year,
+        selectedMonth || undefined,
+      );
+      if (response.data && !response.data.has_invoices) {
+        setNoInvoicesPeriodLabel(getPeriodLabel());
+        setPendingAccrualAction(() => action);
+        onNoInvoicesModalOpen();
+        return;
+      }
+    } catch (error) {
+      console.error("Error checking invoices for accrual period:", error);
+    }
+
+    action();
+  };
+
+  const handleContinueWithoutInvoices = () => {
+    const action = pendingAccrualAction;
+    onNoInvoicesModalClose();
+    setPendingAccrualAction(null);
+    action?.();
+  };
+
+  const handleRunImportFromModal = () => {
+    onNoInvoicesModalClose();
+    setPendingAccrualAction(null);
+    void executeProcess("import");
+  };
+
+  const handleCloseNoInvoicesModal = () => {
+    onNoInvoicesModalClose();
+    setPendingAccrualAction(null);
+  };
+
   const executeProcess = async (processType: "import" | "accrual") => {
     if (!year) {
       alert("Please specify a year");
@@ -128,6 +211,8 @@ const SyncManagement: React.FC = () => {
     const startingPoint =
       processType === "import" ? importStartingPoint : accrualStartingPoint;
 
+    const executionId = `process-${processType}`;
+    setActiveExecution(executionId);
     setIsLoading(true);
     try {
       const response: ApiResponse<SyncStatusResponse> =
@@ -142,6 +227,7 @@ const SyncManagement: React.FC = () => {
       console.error(`Error executing ${processType} process:`, error);
       alert(`Error executing ${processType} process: ${error}`);
     } finally {
+      setActiveExecution(null);
       setIsLoading(false);
     }
   };
@@ -155,6 +241,8 @@ const SyncManagement: React.FC = () => {
       return;
     }
 
+    const executionId = `${stepType}-${stepId}`;
+    setActiveExecution(executionId);
     setIsLoading(true);
     try {
       const response: ApiResponse<SyncStatusResponse> =
@@ -168,6 +256,7 @@ const SyncManagement: React.FC = () => {
       console.error(`Error executing step ${stepId}:`, error);
       alert(`Error executing step ${stepId}: ${error}`);
     } finally {
+      setActiveExecution(null);
       setIsLoading(false);
     }
   };
@@ -266,61 +355,74 @@ const SyncManagement: React.FC = () => {
         }}
       >
         <div
-          className="flex items-center justify-between px-5 py-4"
+          className="flex flex-col gap-2 px-5 py-4"
           style={{ borderBottom: "1px solid var(--border)" }}
         >
-          <div>
-            <p
-              className="text-sm font-semibold"
-              style={{ color: "var(--foreground)" }}
-            >
-              Import Steps
-            </p>
-            <p
-              className="text-xs mt-0.5"
-              style={{ color: "var(--muted-foreground)" }}
-            >
-              Starting from:{" "}
-              {availableSteps.import_steps.find(
-                (s) => s.id === importStartingPoint,
-              )?.name || "Sync Invoices"}
-            </p>
+          <div className="flex items-center justify-between">
+            <div>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: "var(--foreground)" }}
+              >
+                Import Steps
+              </p>
+              <p
+                className="text-xs mt-0.5"
+                style={{ color: "var(--muted-foreground)" }}
+              >
+                Starting from:{" "}
+                {availableSteps.import_steps.find(
+                  (s) => s.id === importStartingPoint,
+                )?.name || "Sync Invoices"}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="bordered"
+                onPress={() => setShowImportSteps(!showImportSteps)}
+                endContent={
+                  <Icon
+                    icon={
+                      showImportSteps
+                        ? "lucide:chevron-up"
+                        : "lucide:chevron-down"
+                    }
+                    width={14}
+                    height={14}
+                  />
+                }
+              >
+                {showImportSteps ? "Hide" : "Show"} steps
+              </Button>
+              <Button
+                size="sm"
+                color="primary"
+                onPress={() => executeProcess("import")}
+                isDisabled={!!activeExecution}
+                startContent={
+                  activeExecution === "process-import" ? (
+                    <Spinner size="sm" />
+                  ) : (
+                    <Icon icon="lucide:play" width={14} height={14} />
+                  )
+                }
+              >
+                Run Import
+              </Button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              variant="bordered"
-              onPress={() => setShowImportSteps(!showImportSteps)}
-              endContent={
-                <Icon
-                  icon={
-                    showImportSteps
-                      ? "lucide:chevron-up"
-                      : "lucide:chevron-down"
-                  }
-                  width={14}
-                  height={14}
-                />
-              }
-            >
-              {showImportSteps ? "Hide" : "Show"} steps
-            </Button>
-            <Button
-              size="sm"
-              color="primary"
-              onPress={() => executeProcess("import")}
-              isDisabled={isLoading}
-              startContent={
-                isLoading ? (
-                  <Spinner size="sm" />
-                ) : (
-                  <Icon icon="lucide:play" width={14} height={14} />
-                )
-              }
-            >
-              Run Import
-            </Button>
-          </div>
+
+          {activeExecution &&
+            (activeExecution === "process-import" ||
+              activeExecution.startsWith("import-")) && (
+              <div className="flex items-center gap-2 text-xs">
+                <Spinner size="sm" />
+                <span style={{ color: "var(--muted-foreground)" }}>
+                  Execution in progress: {activeExecution}
+                </span>
+              </div>
+            )}
         </div>
         {showImportSteps && (
           <div className="p-5 space-y-2">
@@ -362,9 +464,9 @@ const SyncManagement: React.FC = () => {
                     variant="flat"
                     color="primary"
                     onPress={() => executeSingleStep(step.id, "import")}
-                    isDisabled={isLoading}
+                    isDisabled={!!activeExecution}
                     startContent={
-                      isLoading ? (
+                      activeExecution === `import-${step.id}` ? (
                         <Spinner size="sm" />
                       ) : (
                         <Icon icon="lucide:play" width={13} height={13} />
@@ -410,10 +512,12 @@ const SyncManagement: React.FC = () => {
           <Button
             size="sm"
             color="primary"
-            onPress={() => executeProcess("accrual")}
-            isDisabled={isLoading}
+            onPress={() =>
+              void runAccrualWithInvoiceCheck(() => executeProcess("accrual"))
+            }
+            isDisabled={!!activeExecution}
             startContent={
-              isLoading ? (
+              activeExecution === "process-accrual" ? (
                 <Spinner size="sm" />
               ) : (
                 <Icon icon="lucide:play" width={14} height={14} />
@@ -454,10 +558,14 @@ const SyncManagement: React.FC = () => {
                   size="sm"
                   variant="flat"
                   color="primary"
-                  onPress={() => executeSingleStep(step.id, "accrual")}
-                  isDisabled={isLoading}
+                  onPress={() =>
+                    void runAccrualWithInvoiceCheck(() =>
+                      executeSingleStep(step.id, "accrual"),
+                    )
+                  }
+                  isDisabled={!!activeExecution}
                   startContent={
-                    isLoading ? (
+                    activeExecution === `accrual-${step.id}` ? (
                       <Spinner size="sm" />
                     ) : (
                       <Icon icon="lucide:play" width={13} height={13} />
@@ -585,6 +693,86 @@ const SyncManagement: React.FC = () => {
           </div>
         </div>
       )}
+
+      <Modal
+        isOpen={isNoInvoicesModalOpen}
+        onClose={handleCloseNoInvoicesModal}
+        size="md"
+      >
+        <ModalContent>
+          {() => (
+            <>
+              <ModalHeader className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Icon
+                    icon="lucide:triangle-alert"
+                    width={20}
+                    height={20}
+                    style={{ color: "#d97706" }}
+                  />
+                  <span>No invoices found</span>
+                </div>
+              </ModalHeader>
+              <ModalBody className="space-y-4">
+                <p style={{ color: "var(--foreground)" }}>
+                  No invoices found for <strong>{noInvoicesPeriodLabel}</strong>
+                  . Accruals may produce incomplete or incorrect results without
+                  invoice data.
+                </p>
+                <div
+                  className="rounded-lg p-4"
+                  style={{
+                    backgroundColor: "rgba(25,118,210,0.08)",
+                    border: "1px solid rgba(25,118,210,0.25)",
+                  }}
+                >
+                  <p
+                    className="text-sm font-semibold"
+                    style={{ color: "#1976d2" }}
+                  >
+                    Run import first
+                  </p>
+                  <p
+                    className="text-sm mt-1"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    Import invoices from Holded before processing accruals. This
+                    step is strongly recommended.
+                  </p>
+                </div>
+                <p
+                  className="text-sm"
+                  style={{ color: "var(--muted-foreground)" }}
+                >
+                  Continue anyway only if you are sure invoice data is not
+                  needed for this period.
+                </p>
+              </ModalBody>
+              <ModalFooter className="flex flex-wrap gap-2">
+                <Button variant="light" onPress={handleCloseNoInvoicesModal}>
+                  Cancel
+                </Button>
+                <Button
+                  color="primary"
+                  onPress={handleRunImportFromModal}
+                  startContent={
+                    <Icon icon="lucide:download" width={14} height={14} />
+                  }
+                >
+                  Run Import
+                </Button>
+                <Button
+                  color="warning"
+                  variant="flat"
+                  onPress={handleContinueWithoutInvoices}
+                >
+                  Continue Anyway
+                </Button>
+              </ModalFooter>
+            </>
+          )}
+        </ModalContent>
+      </Modal>
     </div>
   );
 };
