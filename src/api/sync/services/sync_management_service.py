@@ -547,19 +547,59 @@ class SyncManagementService:
                     "success": result.get("success", True)
                 }
         elif step_name == "notion-external-id":
-            # Notion sync has specific field names: linked, not_found
             linked = result.get("linked", 0)
-            not_found = result.get("not_found", 0)
-            total_processed = linked + not_found
+            not_found_details = result.get("not_found_details", [])
+            missing_page_count = sum(
+                1
+                for detail in not_found_details
+                if detail.get("reason") == "No matching Notion page"
+            )
+            api_error_count = len(not_found_details) - missing_page_count
+            total_processed = linked + len(not_found_details)
             stats = {
                 "step": step_name,
                 "total_processed": total_processed,
-                "total_created": linked,  # linked = created external IDs
+                "total_created": linked,
                 "total_updated": 0,
                 "total_skipped": 0,
-                "total_failed": not_found,  # not_found = failed lookups
-                "total_errors": len(result.get("not_found_details", [])),
-                "success": result.get("success", True)
+                "total_failed": missing_page_count,
+                "total_errors": api_error_count,
+                "success": result.get("success", True),
+            }
+        elif step_name == "services":
+            created = result.get("created", 0)
+            updated = result.get("updated", 0)
+            skipped = result.get("skipped", 0)
+            errors_count = result.get("errors", 0)
+            total_processed = created + updated + skipped + errors_count
+            stats = {
+                "step": step_name,
+                "total_processed": total_processed,
+                "total_created": created,
+                "total_updated": updated,
+                "total_skipped": skipped,
+                "total_failed": 0,
+                "total_errors": errors_count,
+                "success": result.get("success", True),
+            }
+        elif step_name == "service-periods":
+            created = result.get("created", 0)
+            updated = result.get("updated", 0)
+            skipped = result.get("skipped", 0)
+            errors_count = result.get("errors", 0)
+            compatibility_errors = result.get("compatibility_errors", 0)
+            total_processed = (
+                created + updated + skipped + errors_count + compatibility_errors
+            )
+            stats = {
+                "step": step_name,
+                "total_processed": total_processed,
+                "total_created": created,
+                "total_updated": updated,
+                "total_skipped": skipped,
+                "total_failed": 0,
+                "total_errors": errors_count + compatibility_errors,
+                "success": result.get("success", True),
             }
         elif step_name == "crm-clients":
             # CRM clients sync (4Geeks) has specific field names: linked, not_found, errors
@@ -574,7 +614,7 @@ class SyncManagementService:
                 "total_updated": 0,
                 "total_skipped": 0,
                 "total_failed": not_found,  # not_found = clients not found in 4Geeks
-                "total_errors": errors_count + len(result.get("error_details", [])),
+                "total_errors": errors_count,
                 "success": result.get("success", True)
             }
         elif step_name == "accruals":

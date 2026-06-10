@@ -33,13 +33,147 @@ interface AvailableSteps {
   accrual_steps: SyncStep[];
 }
 
+interface StepStats {
+  total_processed?: number;
+  total_created?: number;
+  total_updated?: number;
+  total_skipped?: number;
+  total_failed?: number;
+  total_errors?: number;
+  total_received?: number;
+  error?: string;
+}
+
+interface StepResult {
+  step: string;
+  stats?: StepStats;
+}
+
 interface SyncResult {
   process_id: string;
   process_type: string;
   status: string;
-  total_stats?: any;
-  step_results?: any[];
+  total_stats?: StepStats;
+  step_results?: StepResult[];
 }
+
+interface StepMetric {
+  label: string;
+  value: number;
+  color: string;
+  bg: string;
+}
+
+const STEP_DISPLAY_NAMES: Record<string, string> = {
+  services: "Services",
+  invoices: "Invoices",
+  "crm-clients": "CRM Clients",
+  "service-periods": "Service Periods",
+  "notion-external-id": "Notion External IDs",
+  accruals: "Accruals",
+};
+
+const IGNORED_METRIC: StepMetric = {
+  label: "Ignored",
+  value: 0,
+  color: "var(--stat-ignored)",
+  bg: "var(--stat-ignored-bg)",
+};
+
+const getStepGridClass = (metricCount: number): string => {
+  if (metricCount >= 6) return "grid-cols-2 md:grid-cols-3 lg:grid-cols-6";
+  if (metricCount === 5) return "grid-cols-2 md:grid-cols-5";
+  return "grid-cols-2 md:grid-cols-4";
+};
+
+const getStepDisplayName = (
+  stepId: string,
+  availableSteps: AvailableSteps,
+): string => {
+  const step =
+    availableSteps.import_steps.find((s) => s.id === stepId) ||
+    availableSteps.accrual_steps.find((s) => s.id === stepId);
+  return step?.name || STEP_DISPLAY_NAMES[stepId] || stepId;
+};
+
+const getStepMetrics = (stepId: string, stats?: StepStats): StepMetric[] => {
+  const processed = stats?.total_processed || 0;
+  const created = stats?.total_created || 0;
+  const updated = stats?.total_updated || 0;
+  const ignored = stats?.total_skipped || 0;
+  const errors = stats?.total_errors || 0;
+  const ignoredMetric: StepMetric = { ...IGNORED_METRIC, value: ignored };
+
+  if (stepId === "crm-clients" || stepId === "notion-external-id") {
+    return [
+      {
+        label: "Processed",
+        value: processed,
+        color: "#1976d2",
+        bg: "rgba(25,118,210,0.06)",
+      },
+      {
+        label: "Linked",
+        value: created,
+        color: "#16a34a",
+        bg: "rgba(22,163,74,0.06)",
+      },
+      {
+        label: "Not Found",
+        value: stats?.total_failed || 0,
+        color: "#d97706",
+        bg: "rgba(217,119,6,0.06)",
+      },
+      {
+        label: "Errors",
+        value: errors,
+        color: "#dc2626",
+        bg: "rgba(220,38,38,0.06)",
+      },
+    ];
+  }
+
+  const metrics: StepMetric[] = [];
+
+  if (stepId === "invoices" && stats?.total_received != null) {
+    metrics.push({
+      label: "Received",
+      value: stats.total_received,
+      color: "#7c3aed",
+      bg: "rgba(124,58,237,0.06)",
+    });
+  }
+
+  metrics.push(
+    {
+      label: "Processed",
+      value: processed,
+      color: "#1976d2",
+      bg: "rgba(25,118,210,0.06)",
+    },
+    {
+      label: "Created",
+      value: created,
+      color: "#16a34a",
+      bg: "rgba(22,163,74,0.06)",
+    },
+    {
+      label: "Updated",
+      value: updated,
+      color: "#d97706",
+      bg: "rgba(217,119,6,0.06)",
+    },
+    {
+      label: "Errors",
+      value: errors,
+      color: "#dc2626",
+      bg: "rgba(220,38,38,0.06)",
+    },
+    ignoredMetric,
+  );
+
+  return metrics;
+};
 
 const SyncManagement: React.FC = () => {
   const [availableSteps, setAvailableSteps] = useState<AvailableSteps>({
@@ -601,95 +735,50 @@ const SyncManagement: React.FC = () => {
               Execution Results
             </p>
           </div>
-          <div className="p-5 space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {[
-                {
-                  label: "Processed",
-                  value: results.total_stats?.total_processed || 0,
-                  color: "#1976d2",
-                  bg: "rgba(25,118,210,0.06)",
-                },
-                {
-                  label: "Created",
-                  value: results.total_stats?.total_created || 0,
-                  color: "#16a34a",
-                  bg: "rgba(22,163,74,0.06)",
-                },
-                {
-                  label: "Updated",
-                  value: results.total_stats?.total_updated || 0,
-                  color: "#d97706",
-                  bg: "rgba(217,119,6,0.06)",
-                },
-                {
-                  label: "Errors",
-                  value: results.total_stats?.total_errors || 0,
-                  color: "#dc2626",
-                  bg: "rgba(220,38,38,0.06)",
-                },
-              ].map(({ label, value, color, bg }) => (
-                <div
-                  key={label}
-                  className="p-3 rounded-lg text-center"
-                  style={{ backgroundColor: bg }}
-                >
-                  <p className="text-2xl font-bold" style={{ color }}>
-                    {value}
-                  </p>
-                  <p className="text-xs font-medium mt-0.5" style={{ color }}>
-                    {label}
-                  </p>
-                </div>
-              ))}
-            </div>
+          <div className="p-5 space-y-5">
+            {(results.step_results?.length
+              ? results.step_results
+              : [{ step: "result", stats: results.total_stats }]
+            ).map((stepResult, index) => {
+              const metrics = getStepMetrics(stepResult.step, stepResult.stats);
 
-            {results.step_results && results.step_results.length > 0 && (
-              <div>
-                <p
-                  className="text-xs font-semibold uppercase tracking-wider mb-2"
-                  style={{ color: "var(--muted-foreground)" }}
-                >
-                  Step details
-                </p>
-                <div className="space-y-2">
-                  {results.step_results.map((stepResult, index) => (
-                    <div
-                      key={index}
-                      className="p-3 rounded-lg"
-                      style={{ border: "1px solid var(--border)" }}
-                    >
-                      <p
-                        className="text-sm font-medium"
-                        style={{ color: "var(--foreground)" }}
+              return (
+                <div key={`${stepResult.step}-${index}`} className="space-y-3">
+                  <p
+                    className="text-sm font-semibold"
+                    style={{ color: "var(--foreground)" }}
+                  >
+                    {getStepDisplayName(stepResult.step, availableSteps)}
+                  </p>
+                  <div
+                    className={`grid gap-3 ${getStepGridClass(metrics.length)}`}
+                  >
+                    {metrics.map(({ label, value, color, bg }) => (
+                      <div
+                        key={label}
+                        className="p-3 rounded-lg text-center"
+                        style={{ backgroundColor: bg }}
                       >
-                        {stepResult.step}
-                      </p>
-                      <p
-                        className="text-xs mt-1"
-                        style={{ color: "var(--muted-foreground)" }}
-                      >
-                        {stepResult.step === "invoices" &&
-                          stepResult.stats?.total_received != null &&
-                          `Received: ${stepResult.stats.total_received} · `}
-                        Processed: {stepResult.stats?.total_processed || 0} ·
-                        Created: {stepResult.stats?.total_created || 0} ·
-                        Updated: {stepResult.stats?.total_updated || 0} ·
-                        Errors: {stepResult.stats?.total_errors || 0}
-                      </p>
-                      {stepResult.stats?.error && (
-                        <p
-                          className="text-xs mt-1"
-                          style={{ color: "#dc2626" }}
-                        >
-                          Error: {stepResult.stats.error}
+                        <p className="text-2xl font-bold" style={{ color }}>
+                          {value}
                         </p>
-                      )}
-                    </div>
-                  ))}
+                        <p
+                          className="text-xs font-medium mt-0.5"
+                          style={{ color }}
+                        >
+                          {label}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  {stepResult.stats?.error && (
+                    <p className="text-xs" style={{ color: "#dc2626" }}>
+                      Error: {stepResult.stats.error}
+                    </p>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })}
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 
 @import "tailwindcss";
 
@@ -9,7 +9,7 @@
 @source "../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
 
 :root {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
 
   /* 4Geeks design system - light mode */
   --background: hsl(0 0% 100%);
@@ -32,6 +32,10 @@
   --input: hsl(214.3 31.8% 73%);
   --ring: hsl(207.4 92.7% 42.7%);
   --radius: 0.5rem;
+
+  /* Sync stat: ignored */
+  --stat-ignored: #64748b;
+  --stat-ignored-bg: rgba(100, 116, 139, 0.08);
 
   /* Content area */
   --content-bg: #f8fafc;
@@ -70,6 +74,9 @@ html.dark {
   --input: hsl(217.2 32.6% 17.5%);
   --ring: hsl(207.4 92.7% 42.7%);
 
+  --stat-ignored: #94a3b8;
+  --stat-ignored-bg: color(srgb 0.580502 0.63925 0.721498 / 0.06);
+
   --sidebar-background: hsl(222.2 84% 4.9%);
   --sidebar-foreground: hsl(215 20.2% 65.1%);
   --sidebar-border: hsl(217.2 32.6% 17.5%);
@@ -79,7 +86,7 @@ html.dark {
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: "Inter", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
