@@ -1,4 +1,6 @@
 // API client configuration and utility functions
+import { buildClientsQueryPath, CLIENT_PAGE_SIZE } from "./clientPagination";
+
 const API_BASE_URL =
   process.env.NODE_ENV === "production"
     ? process.env.VITE_API_URL
@@ -103,9 +105,17 @@ export interface ClientUpdate {
 }
 
 export const clientApi = {
-  // Get all clients
-  getClients: async (): Promise<ApiResponse<ClientRead[]>> => {
-    return apiClient.get<ClientRead[]>("/clients");
+  // Get clients (paginated)
+  getClients: async (params?: {
+    skip?: number;
+    limit?: number;
+  }): Promise<ApiResponse<ClientRead[]>> => {
+    return apiClient.get<ClientRead[]>(
+      buildClientsQueryPath(
+        params?.skip ?? 0,
+        params?.limit ?? CLIENT_PAGE_SIZE,
+      ),
+    );
   },
 
   // Get clients with missing external IDs

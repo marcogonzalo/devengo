@@ -14,23 +14,58 @@ import {
   ModalBody,
   ModalFooter,
   useDisclosure,
-  Chip,
   Spinner,
-  Card,
-  CardBody,
 } from "@heroui/react";
 import { Icon } from "@iconify/react";
+import { clientApi, ClientRead, ClientExternalIdCreate } from "../utils/api";
 import {
-  clientApi,
-  ClientRead,
-  ClientMissingExternalId,
-  ClientExternalIdCreate,
-  ClientUpdate,
-} from "../utils/api";
+  CLIENT_PAGE_SIZE,
+  hasMorePages,
+  nextSkip,
+} from "../utils/clientPagination";
 
 interface ClientWithMissingIds extends ClientRead {
   missingExternalIds: string[];
   externalIds: Record<string, string>;
+}
+
+const externalIdSystems = ["holded", "fourgeeks", "notion"];
+
+function buildMissingIdsMap(
+  missingIds: { id: number; system: string }[],
+): Record<number, string[]> {
+  return missingIds.reduce(
+    (acc, missing) => {
+      if (!acc[missing.id]) {
+        acc[missing.id] = [];
+      }
+      acc[missing.id].push(missing.system);
+      return acc;
+    },
+    {} as Record<number, string[]>,
+  );
+}
+
+function enrichClients(
+  allClients: ClientRead[],
+  missingIdsByClient: Record<number, string[]>,
+): ClientWithMissingIds[] {
+  return allClients.map((client) => {
+    const missingExternalIds = missingIdsByClient[client.id] || [];
+    const externalIds: Record<string, string> = {};
+
+    externalIdSystems.forEach((system) => {
+      if (!missingExternalIds.includes(system)) {
+        externalIds[system] = "Present";
+      }
+    });
+
+    return {
+      ...client,
+      missingExternalIds,
+      externalIds,
+    };
+  });
 }
 
 const ClientManagement: React.FC = () => {
@@ -39,9 +74,19 @@ const ClientManagement: React.FC = () => {
   const [selectedClient, setSelectedClient] =
     React.useState<ClientWithMissingIds | null>(null);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false);
+  const [hasMore, setHasMore] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [isUpdating, setIsUpdating] = React.useState(false);
+  const [missingIdsByClient, setMissingIdsByClient] = React.useState<
+    Record<number, string[]>
+  >({});
   const { isOpen, onOpen, onClose } = useDisclosure();
+
+  const sentinelRef = React.useRef<HTMLDivElement | null>(null);
+  const skipRef = React.useRef(0);
+  const hasMoreRef = React.useRef(true);
+  const loadingMoreRef = React.useRef(false);
 
   // Email editing states
   const [selectedClientForEmail, setSelectedClientForEmail] =
@@ -56,76 +101,102 @@ const ClientManagement: React.FC = () => {
     onClose: onEmailModalClose,
   } = useDisclosure();
 
-  // Define the external ID systems we track
-  const externalIdSystems = ["holded", "fourgeeks", "notion"];
+  const fetchMissingIdsMap = async (): Promise<Record<number, string[]>> => {
+    const missingIdsResponse = await clientApi.getClientsMissingExternalIds();
+    if (missingIdsResponse.error) {
+      throw new Error(missingIdsResponse.error);
+    }
+    const map = buildMissingIdsMap(missingIdsResponse.data || []);
+    setMissingIdsByClient(map);
+    return map;
+  };
 
-  const fetchClients = async () => {
-    setIsLoading(true);
+  const fetchPage = async (
+    pageSkip: number,
+    options: { replace: boolean; missingMap?: Record<number, string[]> },
+  ) => {
+    const { replace } = options;
+
+    if (replace) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
     setError(null);
 
     try {
-      // Fetch all clients and missing external IDs in parallel
-      const [clientsResponse, missingIdsResponse] = await Promise.all([
-        clientApi.getClients(),
-        clientApi.getClientsMissingExternalIds(),
-      ]);
+      const missingMap =
+        options.missingMap ??
+        (replace || Object.keys(missingIdsByClient).length === 0
+          ? await fetchMissingIdsMap()
+          : missingIdsByClient);
+
+      const clientsResponse = await clientApi.getClients({
+        skip: pageSkip,
+        limit: CLIENT_PAGE_SIZE,
+      });
 
       if (clientsResponse.error) {
         throw new Error(clientsResponse.error);
       }
 
-      if (missingIdsResponse.error) {
-        throw new Error(missingIdsResponse.error);
-      }
+      const page = enrichClients(clientsResponse.data || [], missingMap);
+      const more = hasMorePages(page.length);
 
-      const allClients = clientsResponse.data || [];
-      const missingIds = missingIdsResponse.data || [];
-
-      // Create a map of missing external IDs by client ID
-      const missingIdsByClient = missingIds.reduce(
-        (acc, missing) => {
-          if (!acc[missing.id]) {
-            acc[missing.id] = [];
-          }
-          acc[missing.id].push(missing.system);
-          return acc;
-        },
-        {} as Record<number, string[]>,
-      );
-
-      // Combine client data with missing external IDs information
-      const clientsWithMissingIds: ClientWithMissingIds[] = allClients.map(
-        (client) => {
-          const missingExternalIds = missingIdsByClient[client.id] || [];
-          const externalIds: Record<string, string> = {};
-
-          // For each system, check if it's missing or present
-          externalIdSystems.forEach((system) => {
-            if (!missingExternalIds.includes(system)) {
-              externalIds[system] = "Present"; // We don't have the actual ID in the response
-            }
-          });
-
-          return {
-            ...client,
-            missingExternalIds,
-            externalIds,
-          };
-        },
-      );
-
-      setClients(clientsWithMissingIds);
+      setClients((prev) => (replace ? page : [...prev, ...page]));
+      skipRef.current = nextSkip(pageSkip, page.length);
+      hasMoreRef.current = more;
+      setHasMore(more);
     } catch (err) {
       console.error("Error fetching clients:", err);
       setError(err instanceof Error ? err.message : "Failed to fetch clients");
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   };
 
+  const resetAndLoad = async () => {
+    skipRef.current = 0;
+    hasMoreRef.current = true;
+    setHasMore(true);
+    setClients([]);
+    await fetchPage(0, { replace: true });
+  };
+
+  const loadMore = React.useCallback(async () => {
+    if (!hasMoreRef.current || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    try {
+      await fetchPage(skipRef.current, { replace: false });
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [missingIdsByClient]);
+
   React.useEffect(() => {
-    fetchClients();
+    void resetAndLoad();
   }, []);
+
+  React.useEffect(() => {
+    if (isLoading && clients.length === 0) return;
+    if (!hasMore) return;
+
+    const el = sentinelRef.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          void loadMore();
+        }
+      },
+      { root: null, rootMargin: "200px" },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [isLoading, clients.length, hasMore, loadMore]);
 
   const filteredClients = clients.filter(
     (client) =>
@@ -143,13 +214,11 @@ const ClientManagement: React.FC = () => {
 
     setIsUpdating(true);
     try {
-      // Update external IDs that have been added
       const promises = externalIdSystems.map(async (system) => {
         const currentValue = updatedClient.externalIds[system];
         const wasEmpty = selectedClient.missingExternalIds.includes(system);
 
         if (wasEmpty && currentValue && currentValue !== "Present") {
-          // Add the new external ID
           const externalIdData: ClientExternalIdCreate = {
             system,
             external_id: currentValue,
@@ -161,14 +230,12 @@ const ClientManagement: React.FC = () => {
 
       const results = await Promise.all(promises);
 
-      // Check for any errors
       const errors = results.filter((result) => result?.error);
       if (errors.length > 0) {
         throw new Error(errors[0]?.error || "Failed to update external IDs");
       }
 
-      // Refresh the client list
-      await fetchClients();
+      await resetAndLoad();
       onClose();
     } catch (err) {
       console.error("Error updating client:", err);
@@ -229,10 +296,8 @@ const ClientManagement: React.FC = () => {
         throw new Error(response.error);
       }
 
-      // Refresh the client list
-      await fetchClients();
+      await resetAndLoad();
 
-      // Close modals and reset states
       onEmailModalClose();
       setSelectedClientForEmail(null);
       setNewEmail("");
@@ -258,7 +323,7 @@ const ClientManagement: React.FC = () => {
     setError(null);
   };
 
-  if (isLoading) {
+  if (isLoading && clients.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">
         <Spinner size="lg" color="primary" />
@@ -288,7 +353,7 @@ const ClientManagement: React.FC = () => {
           <Button
             size="sm"
             variant="bordered"
-            onPress={fetchClients}
+            onPress={() => void resetAndLoad()}
             className="ml-auto"
           >
             Retry
@@ -326,7 +391,7 @@ const ClientManagement: React.FC = () => {
         <Button
           size="sm"
           variant="bordered"
-          onPress={fetchClients}
+          onPress={() => void resetAndLoad()}
           startContent={
             <Icon icon="lucide:refresh-cw" width={14} height={14} />
           }
@@ -590,6 +655,16 @@ const ClientManagement: React.FC = () => {
             <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
               No clients found
             </p>
+          </div>
+        )}
+
+        {hasMore && (
+          <div
+            ref={sentinelRef}
+            className="flex justify-center items-center py-4"
+            aria-hidden={!isLoadingMore}
+          >
+            {isLoadingMore && <Spinner size="sm" color="primary" />}
           </div>
         )}
       </div>
