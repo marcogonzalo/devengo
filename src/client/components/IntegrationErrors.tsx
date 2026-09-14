@@ -54,6 +54,44 @@ interface FilterOptions {
   entityTypes: string[];
 }
 
+const ErrorDetailsBlock: React.FC<{ content: string }> = ({ content }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable in insecure contexts
+    }
+  };
+
+  return (
+    <div className="relative mt-1 group">
+      <Tooltip content={copied ? "Copied" : "Copy"}>
+        <Button
+          isIconOnly
+          size="sm"
+          variant="flat"
+          className="absolute top-1 right-1 z-10 min-w-6 w-6 h-6 opacity-80 group-hover:opacity-100"
+          aria-label="Copy error details"
+          onPress={handleCopy}
+        >
+          <Icon
+            icon={copied ? "lucide:check" : "lucide:copy"}
+            width={12}
+            height={12}
+          />
+        </Button>
+      </Tooltip>
+      <pre className="text-tiny text-gray-400 whitespace-pre-wrap break-words cursor-text bg-default-100 p-2 pr-8 rounded border border-default-200 select-text">
+        {content}
+      </pre>
+    </div>
+  );
+};
+
 const IntegrationErrors: React.FC = () => {
   const [errors, setErrors] = useState<IntegrationErrorRead[]>([]);
   const [summary, setSummary] = useState<IntegrationErrorSummary | null>(null);
@@ -469,9 +507,9 @@ const IntegrationErrors: React.FC = () => {
                 <summary className="text-tiny text-gray-500 cursor-pointer hover:text-gray-400">
                   View details
                 </summary>
-                <pre className="text-tiny text-gray-400 mt-1 whitespace-pre-wrap break-words cursor-text bg-default-100 p-2 rounded border border-default-200 select-text">
-                  {JSON.stringify(error.error_details, null, 2)}
-                </pre>
+                <ErrorDetailsBlock
+                  content={JSON.stringify(error.error_details, null, 2)}
+                />
               </details>
             )}
           </div>
