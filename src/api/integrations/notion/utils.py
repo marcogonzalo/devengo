@@ -12,10 +12,10 @@ from fastapi.logger import logger
 def is_educational_status_ended(status: str) -> bool:
     """
     Check if educational status represents successful completion or formal ending.
-    
+
     Args:
         status: Educational status from Notion
-        
+
     Returns:
         True if status indicates successful completion (GRADUATED, NOT_COMPLETING, ENDED)
     """
@@ -26,10 +26,10 @@ def is_educational_status_ended(status: str) -> bool:
 def is_educational_status_dropped(status: str) -> bool:
     """
     Check if educational status represents a dropout or suspension scenario.
-    
+
     Args:
         status: Educational status from Notion
-        
+
     Returns:
         True if status indicates dropout or suspension (DROPPED, EARLY_DROPPED, SUSPENDED)
     """
@@ -40,10 +40,10 @@ def is_educational_status_dropped(status: str) -> bool:
 def categorize_educational_status(status: str) -> str:
     """
     Categorize educational status for contract accrual processing.
-    
+
     Args:
         status: Educational status from Notion
-        
+
     Returns:
         Category string: 'ended', 'dropped', or 'active'
     """
@@ -55,13 +55,35 @@ def categorize_educational_status(status: str) -> str:
         return 'active'
 
 
+def parse_notion_educational_status(prop: Optional[Dict]) -> Optional[str]:
+    """
+    Extract a normalized educational status string from a Notion property.
+
+    Supports both `select` and `status` property types. Returns None when the
+    property is missing, empty, or has no usable name. Never returns a raw dict.
+    """
+    if not isinstance(prop, dict):
+        return None
+
+    value = prop.get("select") if prop.get(
+        "select") is not None else prop.get("status")
+    if not isinstance(value, dict):
+        return None
+
+    name = value.get("name")
+    if not isinstance(name, str) or not name.strip():
+        return None
+
+    return "_".join(name.upper().split())
+
+
 async def get_client_educational_data(client) -> Optional[Dict]:
     """
     Check if client exists in Notion and return educational data.
-    
+
     Args:
         client: Client object with identifier and external_id methods
-        
+
     Returns:
         Dictionary with educational_status and status_change_date, or None if not found
     """
@@ -78,13 +100,14 @@ async def get_client_educational_data(client) -> Optional[Dict]:
     if not page:
         try:
             page = await notion_client.get_page_by_email(
-                database_id=notion_config.database_id, 
-                property_name="Email", 
+                database_id=notion_config.database_id,
+                property_name="Email",
                 value=client.identifier
             )
         except Exception as e:
             print('get_client_educational_data_error', e)
-            logger.warning(f"Failed to check client {client.id} in Notion: {str(e)}")
+            logger.warning(
+                f"Failed to check client {client.id} in Notion: {str(e)}")
             return None
 
     if not page:
@@ -92,12 +115,11 @@ async def get_client_educational_data(client) -> Optional[Dict]:
 
     # Parse Notion page properties
     properties = page.get('properties', {})
-    
-    # Extract educational status
-    educational_status = properties.get('Educational Status')
-    if educational_status and educational_status.get("select"):
-        educational_status = educational_status.get("select", {}).get("name")
-        educational_status = "_".join(educational_status.upper().split())
+
+    # Extract educational status (select or status Notion property types)
+    educational_status = parse_notion_educational_status(
+        properties.get('Educational Status')
+    )
     # Extract status change date ('Drop Date' or 'Certificated At')
     status_change_date = properties.get('Drop Date')
     if not (status_change_date and status_change_date.get("date")):
@@ -114,4 +136,4 @@ async def get_client_educational_data(client) -> Optional[Dict]:
     return {
         'educational_status': educational_status,
         'status_change_date': status_change_date
-    } 
+    }

@@ -31,7 +31,7 @@ service_contract_status_enum = ENUM(
 )
 
 
-def map_educational_status(status: str) -> ServicePeriodStatus:
+def map_educational_status(status) -> ServicePeriodStatus:
     status_mapping = {
         "ACTIVE": ServicePeriodStatus.ACTIVE,
         "DROPPED": ServicePeriodStatus.DROPPED,
@@ -42,4 +42,6 @@ def map_educational_status(status: str) -> ServicePeriodStatus:
         "POSTPONED": ServicePeriodStatus.POSTPONED,
         "SUSPENDED": ServicePeriodStatus.DROPPED,
     }
+    if not isinstance(status, str) or not status:
+        return ServicePeriodStatus.ACTIVE
     return status_mapping.get(status, ServicePeriodStatus.ACTIVE)
