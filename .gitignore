@@ -26,6 +26,7 @@ dist
 dist-ssr
 *.local
 /*.sql
+/backups/*.sql*
 
 # Editor directories and files
 .vscode/*
