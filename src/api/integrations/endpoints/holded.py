@@ -5,14 +5,23 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.logger import logger
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
-from src.api.common.constants.services import ServiceContractStatus
+from src.api.common.constants.services import (
+    ServiceContractStatus,
+    uses_internal_service_periods,
+)
 from src.api.services.schemas.service_contract import ServiceContractUpdate
 from src.api.services.services.service_contract import ServiceContractService
 from src.api.common.utils.database import get_db
 from src.api.services.endpoints.service import get_service_service
 from src.api.services.endpoints.service_contract import get_service_contract_service
+from src.api.services.endpoints.service_period import get_service_period_service
 from src.api.services.services import ServiceService
 from src.api.services.services.service_service import ServiceService
+from src.api.services.services.service_period_service import ServicePeriodService
+from src.api.services.services.internal_service_period_service import (
+    backfill_internal_service_periods,
+    sync_internal_service_period_for_invoice,
+)
 from src.api.integrations.holded import HoldedClient, HoldedConfig
 from src.api.integrations.utils.error_logger import log_integration_error
 from src.api.clients.services.client_service import ClientService
@@ -94,7 +103,8 @@ def _create_invoice(document, client, invoice_service):
         due_date=due_date,
         total_amount=document.get("total", 0.0),
         currency=document.get("currency", "EUR"),
-        status=document.get("status", "pending")
+        status=document.get("status", "pending"),
+        original_data=document if isinstance(document, dict) else {},
     )
 
     invoice = invoice_service.create_invoice(invoice_data)
@@ -217,6 +227,7 @@ async def sync_invoices_and_clients(
     service_service: ServiceService = Depends(get_service_service),
     service_contract_service: ServiceContractService = Depends(
         get_service_contract_service),
+    period_service: ServicePeriodService = Depends(get_service_period_service),
     db: Session = Depends(get_db),
     start_timestamp: Optional[int] = None,
     end_timestamp: Optional[int] = None
@@ -280,9 +291,22 @@ async def sync_invoices_and_clients(
                     skipped_count += 1
                     continue
 
-                # Create service contract if it doesn't exist
-                service_contract = service_contract_service.get_service_contract_by_client_and_service(
-                    client.id, service.id)
+                uses_internal_periods = bool(
+                    getattr(service, "internal_service_periods", False)
+                    or uses_internal_service_periods(
+                        getattr(service, "account_identifier", None)
+                    )
+                )
+
+                # Create / resolve service contract
+                if uses_internal_periods:
+                    # Never reopen CLOSED contracts for internal-period services
+                    service_contract = service_contract_service.get_open_service_contract_by_client_and_service(
+                        client.id, service.id)
+                else:
+                    service_contract = service_contract_service.get_service_contract_by_client_and_service(
+                        client.id, service.id)
+
                 if not service_contract:
                     try:
                         service_contract = service_contract_service.create_service_contract(
@@ -295,12 +319,17 @@ async def sync_invoices_and_clients(
                     if new_amount != 0:
                         service_contract = service_contract_service.update_contract_amount(
                             service_contract.id, new_amount, invoice_id=invoice.id)
-                    if round(service_contract.contract_amount, 0) > 0 and service_contract.status != ServiceContractStatus.ACTIVE:
+                    if not uses_internal_periods:
+                        if round(service_contract.contract_amount, 0) > 0 and service_contract.status != ServiceContractStatus.ACTIVE:
+                            service_contract_service.update_contract_status(
+                                service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.ACTIVE))
+                        elif round(service_contract.contract_amount, 0) == 0 and service_contract.status == ServiceContractStatus.ACTIVE:
+                            service_contract_service.update_contract_status(
+                                service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.CANCELED))
+                    elif round(service_contract.contract_amount, 0) > 0 and service_contract.status == ServiceContractStatus.CANCELED:
+                        # Keep open (non-CLOSED) contracts ACTIVE when new positive invoices arrive
                         service_contract_service.update_contract_status(
                             service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.ACTIVE))
-                    elif round(service_contract.contract_amount, 0) == 0 and service_contract.status == ServiceContractStatus.ACTIVE:
-                        service_contract_service.update_contract_status(
-                            service_contract.id, ServiceContractUpdate(status=ServiceContractStatus.CANCELED))
 
                 # Handle contract accrual updates for new invoices
                 # Note: For ACTIVE accruals, the update_contract_amount method now handles this automatically
@@ -319,6 +348,16 @@ async def sync_invoices_and_clients(
                 invoice_service.update_invoice(invoice.id, InvoiceUpdate(
                     service_contract_id=service_contract.id
                 ))
+
+                # Internal services: create/adjust generic 12-month periods from invoices
+                if uses_internal_periods and invoice_was_created:
+                    sync_internal_service_period_for_invoice(
+                        document=document,
+                        invoice=invoice,
+                        service_contract=service_contract,
+                        period_service=period_service,
+                        is_credit_note=_is_credit_note(document),
+                    )
 
                 processed_count += 1
                 if invoice_was_created:
@@ -463,7 +502,8 @@ async def sync_services(
                     'external_id': service_id,
                     'name': service.get('name'),
                     'description': service.get('description'),
-                    'account_identifier': account_identifier
+                    'account_identifier': account_identifier,
+                    'internal_service_periods': uses_internal_service_periods(account_identifier),
                 }
 
                 existing_service = service_service.get_service_by_external_id(
@@ -495,13 +535,16 @@ async def sync_services(
                     logger.error(
                         f"Failed to log integration error: {log_error}")
 
+        backfill_stats = backfill_internal_service_periods(db)
+
         return {
             "success": True,
             "created": created_count,
             "updated": updated_count,
             "skipped": skipped_count,
             "errors": error_count,
-            "error_details": errors
+            "error_details": errors,
+            "internal_periods_backfill": backfill_stats,
         }
     except Exception as e:
         # Log the main sync error

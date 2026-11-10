@@ -246,6 +246,14 @@ def sync_client_enrollments(
         for contract in contracts:
             #  Get the client enrollments from 4Geeks
             try:
+                # Skip CRM enrollment sync for services that use internal generic periods
+                service = getattr(contract, "service", None)
+                if service is None:
+                    service = service_service.get_service(contract.service_id)
+                if service and getattr(service, "internal_service_periods", False):
+                    processor.stats["skipped"] += 1
+                    continue
+
                 fourgeeks_external_id = contract.client.get_external_id(
                     system="fourgeeks")
                 if not fourgeeks_external_id:

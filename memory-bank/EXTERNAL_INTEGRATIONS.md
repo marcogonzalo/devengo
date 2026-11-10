@@ -48,13 +48,16 @@ Synchronize services, invoices, and client data from the Holded invoicing system
 1. Fetch services from Holded API
 2. Match by `account_identifier`
 3. Create or update Service records
-4. Map service types (FS, DS, CS) from service names
+4. Map service types (FS, DS, CS, AI-FLEX, …) from service names
+5. Set `internal_service_periods` from allowlisted Holded accountNums (`70501003` and others in `INTERNAL_SERVICE_PERIOD_ACCOUNT_NUMBERS`)
+6. Run internal-period backfill for allowlisted services
 
 **Data Mapped**:
 
 - Service name
 - Account identifier
 - Service type (computed from name)
+- `internal_service_periods` (allowlist-driven)
 - External ID
 
 #### Sync Invoices and Clients
@@ -77,12 +80,16 @@ Synchronize services, invoices, and client data from the Holded invoicing system
    - Create ClientExternalId for Holded system
    - Create or update Invoice record
    - Attempt to match invoice to ServiceContract
+   - If the matched service has `internal_service_periods=True`:
+     - Attach to an open (non-`CLOSED`) contract, or create a new contract if none/open missing
+     - Create a 12-month generic `ServicePeriod` keyed by `invoice_number`, or adjust `period_amount` for credit notes
 
 **Data Mapped**:
 
-- Invoice: number, date, amount, status, external ID
+- Invoice: number, date, amount, status, external ID, original_data
 - Client: identifier (email), name
 - ClientExternalId: system='holded', external_id
+- ServicePeriod (internal services only): name/external_id, dates, `period_amount`
 
 **Matching Logic**:
 
@@ -91,6 +98,7 @@ Synchronize services, invoices, and client data from the Holded invoicing system
   - Service matching
   - Date ranges
   - Amount matching
+- Internal-period services: prefer non-`CLOSED` contract; never reopen `CLOSED` (full rules in [INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md))
 
 **Error Handling**:
 
@@ -152,12 +160,14 @@ Synchronize student data and enrollments (service periods) from the 4Geeks CRM s
 
 **Process**:
 
-1. Fetch enrollments from 4Geeks API
-2. Match enrollments to:
+1. Load active contracts
+2. **Skip** contracts whose service has `internal_service_periods=True` (those periods come from Holded invoices; see [INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md))
+3. Fetch enrollments from 4Geeks API for remaining contracts
+4. Match enrollments to:
    - Client (by external ID)
    - Service (by external ID)
    - ServiceContract (by client + service)
-3. Create or update ServicePeriod records:
+5. Create or update ServicePeriod records:
    - Period name
    - Start and end dates
    - Status (ACTIVE, POSTPONED, DROPPED, ENDED)
@@ -179,6 +189,7 @@ Synchronize student data and enrollments (service periods) from the 4Geeks CRM s
 
 - Logs errors for unmatched enrollments
 - Tracks missing client/service relationships
+- Internal-period contracts are skipped without CRM missing-ID noise
 - Records status mapping issues
 
 ## Notion Integration

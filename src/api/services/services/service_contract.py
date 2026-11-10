@@ -169,6 +169,25 @@ class ServiceContractService:
             (ServiceContract.service_id == service_id)
         )).first()
 
+    def get_open_service_contract_by_client_and_service(
+        self, client_id: int, service_id: int
+    ) -> Optional[ServiceContract]:
+        """
+        Retrieve the latest non-CLOSED service contract for a client+service pair.
+
+        Used by internal_service_periods flows so invoices after CLOSED start a new contract.
+        """
+        contracts = self.db.exec(
+            select(ServiceContract)
+            .where(
+                (ServiceContract.client_id == client_id)
+                & (ServiceContract.service_id == service_id)
+                & (ServiceContract.status != ServiceContractStatus.CLOSED)
+            )
+            .order_by(ServiceContract.id.desc())
+        ).all()
+        return contracts[0] if contracts else None
+
     def create_service_contract(self, client_id: int, service_id: int, first_invoice: InvoiceBase) -> ServiceContract:
         """Create a new service contract for a given client and service"""
         contract_data = ServiceContract(

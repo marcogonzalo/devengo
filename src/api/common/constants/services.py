@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 from sqlalchemy.dialects.postgresql import ENUM
 
 # Python enums for type hints and constants
@@ -15,6 +16,19 @@ class ServiceContractStatus(str, Enum):
     ACTIVE = "ACTIVE"
     CANCELED = "CANCELED"
     CLOSED = "CLOSED"
+
+
+# Holded accountNums that use internal 12-month generic service periods
+# instead of CRM enrollment sync (e.g. AI Flex).
+INTERNAL_SERVICE_PERIOD_ACCOUNT_NUMBERS = {"70501003"}
+INTERNAL_SERVICE_PERIOD_MONTHS = 12
+
+
+def uses_internal_service_periods(account_identifier: Optional[str]) -> bool:
+    """Return True when the Holded accountNum opts into internal service periods."""
+    if account_identifier is None:
+        return False
+    return str(account_identifier) in INTERNAL_SERVICE_PERIOD_ACCOUNT_NUMBERS
 
 
 # SQLAlchemy enum types for database

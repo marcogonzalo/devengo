@@ -94,7 +94,8 @@ external_id = ClientExternalId(
 - `account_identifier` (str, optional, indexed): Account identifier from invoicing system
 - `name` (str): Service name
 - `description` (str, optional): Service description
-- `service_type` (str, optional, indexed): Program type (FS, DS, CS)
+- `service_type` (str, optional, indexed): Program type (FS, DS, CS, AI-FLEX, …)
+- `internal_service_periods` (bool, default=False): When True, skip CRM enrollments and use invoice-driven generic periods (see [INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md))
 - `total_sessions` (int, default=60): Total sessions in service
 - `sessions_per_week` (int, default=3): Sessions per week
 - `created_at` (datetime): Creation timestamp
@@ -107,6 +108,10 @@ external_id = ClientExternalId(
 **Relationships**:
 
 - `contracts`: One-to-many with `ServiceContract`
+
+**Internal periods**:
+
+- Default `False`. Set `True` for Holded `account_identifier` values in `INTERNAL_SERVICE_PERIOD_ACCOUNT_NUMBERS` (currently `70501003` / AI Flex).
 
 ### ServiceContract
 
@@ -156,6 +161,7 @@ external_id = ClientExternalId(
 - `end_date` (date, indexed): Period end date
 - `status` (ServicePeriodStatus, indexed): Period status
 - `status_change_date` (date, optional): Date when status was last changed
+- `period_amount` (float, optional): Amount attributed to this period (invoice total for internal generic periods)
 - `created_at` (datetime): Creation timestamp
 - `updated_at` (datetime): Last update timestamp
 
@@ -173,7 +179,8 @@ external_id = ClientExternalId(
 
 **Special Behavior**:
 
-- `status_change_date` is automatically updated when status changes
+- `status_change_date` is automatically updated when status changes (internal accrual explicitly sets it to `end_date` on natural end)
+- For internal services, generic periods use `external_id`/`name` = invoice number and store the invoice amount in `period_amount`
 
 ### Invoice
 

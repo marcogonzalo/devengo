@@ -30,6 +30,11 @@ This directory contains comprehensive documentation for the Devengo project, cov
   - Accrual calculation algorithms
   - API usage and examples
 
+- **[INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md)**
+  - Invoice-driven generic periods for allowlisted Holded services (AI Flex / `70501003`)
+  - Skip CRM enrollment sync
+  - Period-scoped remaining-months accrual and contract close rules
+
 - **[accrual-reports-documentation.md](./accrual-reports-documentation.md)**
   - Accrual reports and CSV generation system
   - Report algorithm and data organization

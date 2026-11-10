@@ -23,6 +23,13 @@ class Service(BaseModel, TimestampMixin, table=True):
     # Program type based on course category
     service_type: Optional[str] = Field(default=None, index=True, description="Program type: FS (Full-Stack), DS (Data Science), CS (Cybersecurity)")
 
+    # When True, skip CRM enrollment sync and use invoice-based generic periods
+    internal_service_periods: bool = Field(
+        default=False,
+        nullable=False,
+        description="Use internal 12-month generic periods instead of CRM enrollments",
+    )
+
     # Class schedule information
     total_sessions: int = 60
     sessions_per_week: int = 3

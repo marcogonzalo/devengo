@@ -12,6 +12,7 @@ class ServicePeriodBase(BaseModel):
     end_date: date
     status: ServicePeriodStatus = ServicePeriodStatus.ACTIVE
     status_change_date: Optional[date] = None
+    period_amount: Optional[float] = None
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
@@ -34,5 +35,6 @@ class ServicePeriodUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: Optional[ServicePeriodStatus] = None
+    period_amount: Optional[float] = None
     
     model_config = ConfigDict(arbitrary_types_allowed=True) 

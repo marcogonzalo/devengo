@@ -10,6 +10,8 @@ The accrual processing system handles ServiceContract processing based on status
 - Progressive accrual: each period accrues from what's left
 - Session-based proportions for accurate distribution
 
+**Internal service periods** (AI Flex / allowlisted accountNums): see [INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md). Those contracts skip CRM periods and accrue each generic period as `accrual_pending_amount / remaining_months_until_end_date`.
+
 ## Architecture
 
 ```text
@@ -82,11 +84,18 @@ Client in Notion?
 #### 1.3 With Service Periods
 
 ```text
-Overlapping Period Status:
-├── ACTIVE → Accrue proportional amount
-├── POSTPONED → Accrue until status_change_date + PAUSED
-├── DROPPED → Accrue fully + CANCELED
-└── ENDED → Accrue full remaining + CLOSED
+Service.internal_service_periods?
+├── YES → Internal path (see INTERNAL_SERVICE_PERIODS.md)
+│   ├── Accrue each overlapping ACTIVE period:
+│   │   pending_amount / remaining_months_until_end_date
+│   ├── End month → period ENDED (status_change_date = end_date)
+│   └── All periods ENDED → contract CLOSED + accrual COMPLETED
+└── NO → CRM / cohort path
+    Overlapping Period Status:
+    ├── ACTIVE → Accrue proportional amount
+    ├── POSTPONED → Accrue until status_change_date + PAUSED
+    ├── DROPPED → Accrue fully + CANCELED
+    └── ENDED → Accrue full remaining + CLOSED
 ```
 
 ### Case 2: CANCELED Contracts

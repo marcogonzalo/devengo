@@ -217,6 +217,7 @@ Service (1) ──< (N) ServiceContract
   - `/api/integrations/fourgeeks/sync-students-from-clients`
   - `/api/integrations/fourgeeks/sync-enrollments-from-clients`
 - **Data**: Client information, service periods (enrollments)
+- **Note**: Services with `internal_service_periods=True` skip enrollment sync; see [INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md)
 
 ### Notion
 

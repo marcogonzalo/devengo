@@ -46,6 +46,13 @@ class EnrollmentProcessor:
 
     def process_enrollment(self, enrollment: dict, contract_id: int):
         try:
+            contract = self.contract_service.get_contract(contract_id)
+            if contract:
+                service = self.service_service.get_service(contract.service_id)
+                if service and getattr(service, "internal_service_periods", False):
+                    self.stats["skipped"] += 1
+                    return
+
             cohort = enrollment.get("cohort", {})
 
             if not self._validate_enrollment(cohort):

@@ -34,6 +34,11 @@ class ServicePeriod(BaseModel, TimestampMixin, table=True):
         default=None,
         description="Date when the status was last changed. Updated automatically when status changes."
     )
+    # Invoice amount attributed to this period (used by internal_service_periods accrual)
+    period_amount: Optional[float] = Field(
+        default=None,
+        description="Amount to accrue for this period (typically the linked invoice total)",
+    )
 
     # Relationship with AccruedPeriod
     accruals: List["AccruedPeriod"] = Relationship(

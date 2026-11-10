@@ -64,6 +64,7 @@ These steps import data from external systems:
 - **Endpoint**: `/api/integrations/fourgeeks/sync-enrollments-from-clients`
 - **Purpose**: Import service periods (enrollments) from CRM
 - **Parameters**: `start_date`, `end_date` (optional)
+- **Note**: Contracts with `Service.internal_service_periods=True` are skipped here. Their periods are created during Holded invoice sync (see [INTERNAL_SERVICE_PERIODS.md](./INTERNAL_SERVICE_PERIODS.md)).
 
 #### 5. notion-external-id
 
